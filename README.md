@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# App Coletivos
 
-## Getting Started
+Sistema de organização e gestão interna para coletivos comunitários, projetos de
+agroecologia e associações de base — construído com base na metodologia **JEITO**
+(Jornada Pedagógica, Empoderamento, Integração, Território, Organizações).
 
-First, run the development server:
+Este repositório é a plataforma única do app. O primeiro caso de uso real, usado
+como piloto, é o **Módulo 1 — Pátio de Compostagem** (parceria com o Instituto
+Shopping Recife). Um segundo uso, **Gestão do Coletivo** (Chié do Entra), roda
+sobre a mesma base. Veja o Registro Geral do Projeto (Project Knowledge do Claude)
+para o histórico completo de decisões e o estado atual de cada módulo.
+
+## Stack
+
+- **Front-end:** Next.js (App Router) + TypeScript + Tailwind CSS, estruturado como
+  PWA (Progressive Web App) — instalável na tela inicial do celular em Android e
+  iPhone, sem passar por loja de aplicativo.
+- **Resiliência de conexão:** `experimental.useOffline` do Next.js — navegação e
+  envios de formulário não quebram quando a internet cai; ficam pendentes e são
+  reenviados sozinhos quando a conexão volta. Importante porque a equipe do Pátio
+  depende de 4G e tem áreas de sinal fraco.
+- **Banco de dados / autenticação:** Supabase.
+- **Hospedagem / deploy:** Vercel.
+
+## Rodando localmente
+
+Pré-requisito: [Node.js](https://nodejs.org/) 20 ou mais recente.
 
 ```bash
+npm install
+cp .env.example .env.local   # depois preencha com os dados do projeto Supabase
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abra [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variáveis de ambiente
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Veja `.env.example`. Os valores vêm do painel do Supabase, em
+**Project Settings > API**, depois que o projeto Supabase do App Coletivos for
+criado (ainda não foi — ver Registro Geral, seção "Pendências").
 
-## Learn More
+## Estrutura
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/app/            rotas da aplicação (App Router do Next.js)
+src/app/patio/       Módulo 1 — Pátio de Compostagem (placeholder)
+src/app/coletivo/    Módulo 2 — Gestão do Coletivo (placeholder)
+src/app/manifest.ts  manifesto do PWA (nome, ícones, cor do app)
+src/lib/supabase.ts  cliente do Supabase, usado pelas telas para ler/gravar dados
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Cada módulo deve ficar contido na sua própria pasta dentro de `src/app/`, para que
+regras específicas de um caso de uso (ex.: Pátio de Compostagem) não vazem para o
+restante da plataforma — a ideia é que novos coletivos possam usar o mesmo app no
+futuro sem precisar de retrabalho.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Acessibilidade — por que isso importa aqui
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Boa parte da equipe que vai usar este app tem baixo letramento e pouca
+familiaridade com aplicativos de gestão. Toda tela nova deve priorizar: ícones
+grandes e reconhecíveis, poucas etapas por tarefa, texto curto (evitar parágrafos),
+alvos de toque grandes, e evitar jargão técnico. Isso é requisito de produto, não
+detalhe visual.
