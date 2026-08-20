@@ -7,7 +7,7 @@ export default function Home() {
     <main className="flex flex-1 flex-col items-center px-6 py-12 sm:py-20">
       <div className="w-full max-w-md text-center">
         <h1 className="text-2xl font-bold text-[#2e6b3e] sm:text-3xl">
-          App Coletivos
+          App Coletivo
         </h1>
         <p className="mt-2 text-base text-zinc-600">
           Escolha onde você quer trabalhar hoje.

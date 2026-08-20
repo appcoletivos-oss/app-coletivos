@@ -1,12 +1,12 @@
 import type { MetadataRoute } from "next";
 
-// Isso é o que faz o App Coletivos poder ser "instalado" na tela inicial do
+// Isso é o que faz o App Coletivo poder ser "instalado" na tela inicial do
 // celular (Android e iPhone) como se fosse um aplicativo normal, sem passar
 // pela Google Play nem pela App Store.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "App Coletivos",
-    short_name: "Coletivos",
+    name: "App Coletivo",
+    short_name: "Coletivo",
     description:
       "Organização e gestão de coletivos comunitários e suas frentes de atuação.",
     start_url: "/",

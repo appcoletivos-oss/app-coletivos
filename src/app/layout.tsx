@@ -7,7 +7,7 @@ import "./globals.css";
 // tudo prioridade real aqui, dado o sinal instável no Pátio de Compostagem.
 
 export const metadata: Metadata = {
-  title: "App Coletivos",
+  title: "App Coletivo",
   description:
     "Organização e gestão de coletivos comunitários e suas frentes de atuação.",
 };

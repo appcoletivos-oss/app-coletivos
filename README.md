@@ -1,4 +1,4 @@
-# App Coletivos
+# App Coletivo
 
 Sistema de organização e gestão interna para coletivos comunitários, projetos de
 agroecologia e associações de base — construído com base na metodologia **JEITO**
@@ -37,7 +37,7 @@ Abra [http://localhost:3000](http://localhost:3000).
 ## Variáveis de ambiente
 
 Veja `.env.example`. Os valores vêm do painel do Supabase, em
-**Project Settings > API**, depois que o projeto Supabase do App Coletivos for
+**Project Settings > API**, depois que o projeto Supabase do App Coletivo for
 criado (ainda não foi — ver Registro Geral, seção "Pendências").
 
 ## Estrutura
