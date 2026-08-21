@@ -1,31 +1,46 @@
 import Link from "next/link";
 
-// Placeholder do Módulo 1 (Pátio de Compostagem). As telas reais
-// (ciclo produtivo, caixas de compostagem, doações, ponto da equipe) ainda
-// vão ser desenhadas e construídas uma a uma — ver Registro Geral do
-// Projeto para o que já está definido e o que falta.
+// Módulo 1 (Pátio de Compostagem). Os 6 blocos vêm do wireframe (estrutura
+// fechada, rodada 7) — só "Compostagem" tem tela real por trás por
+// enquanto (Registrar alimentação); os outros ainda são placeholder.
+const BLOCOS = [
+  { href: "/patio/compostagem", icone: "🌱", rotulo: "Compostagem", pronto: true },
+  { href: "#", icone: "🌻", rotulo: "Horta", pronto: false },
+  { href: "#", icone: "⏰", rotulo: "Meu Ponto", pronto: false },
+  { href: "#", icone: "📅", rotulo: "Agenda", pronto: false },
+  { href: "#", icone: "📦", rotulo: "Venda", pronto: false },
+  { href: "#", icone: "⚙️", rotulo: "Mais", pronto: false },
+];
+
 export default function PatioPage() {
   return (
-    <main className="flex flex-1 flex-col items-center px-6 py-16 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2e6b3e] text-white">
-        <span aria-hidden="true" className="text-2xl">
-          🌱
-        </span>
-      </span>
-      <h1 className="mt-4 text-xl font-bold text-zinc-900">
-        Pátio de Compostagem
-      </h1>
-      <p className="mt-2 max-w-sm text-sm text-zinc-600">
-        Este módulo ainda está em construção. As próximas telas vão cobrir o
-        ciclo produtivo, as caixas de compostagem, doações e o ponto da
-        equipe.
-      </p>
-      <Link
-        href="/"
-        className="mt-8 rounded-full border-2 border-[#2e6b3e] px-6 py-2 text-sm font-semibold text-[#2e6b3e] focus-visible:outline focus-visible:outline-4 focus-visible:outline-[#2e6b3e]/40"
-      >
-        Voltar
-      </Link>
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col px-4 py-6">
+      <div className="mb-4 flex items-center justify-between rounded-xl border-2 border-zinc-800 bg-white px-3 py-2">
+        <span className="text-sm font-bold text-zinc-900">🌿 Pátio de Compostagem</span>
+        <Link href="/" className="text-lg" aria-label="Voltar">
+          ←
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {BLOCOS.map((bloco) => (
+          <Link
+            key={bloco.rotulo}
+            href={bloco.pronto ? bloco.href : "#"}
+            aria-disabled={!bloco.pronto}
+            className={[
+              "rounded-xl border-2 py-6 text-center text-sm font-bold",
+              bloco.pronto
+                ? "border-zinc-800 bg-white text-zinc-800"
+                : "pointer-events-none border-dashed border-zinc-300 text-zinc-400",
+            ].join(" ")}
+          >
+            <span className="mb-1 block text-2xl">{bloco.icone}</span>
+            {bloco.rotulo}
+            {!bloco.pronto && <span className="mt-1 block text-[10px] font-normal">em breve</span>}
+          </Link>
+        ))}
+      </div>
     </main>
   );
 }

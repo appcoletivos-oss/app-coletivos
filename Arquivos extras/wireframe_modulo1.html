@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>App Coletivo — Wireframes do Módulo 1 (Pátio de Compostagem)</title>
+<style>
+  :root{
+    --ink:#2b2b28;
+    --line:#4a4a45;
+    --line-light:#9a9890;
+    --paper:#faf8f2;
+    --paper2:#f1efe6;
+    --note:#c9742f;
+    --note-bg:#fff3e2;
+    --lock:#8a3b3b;
+    --star:#2f6b4f;
+    --new:#2f5f8f;
+    --new-bg:#eaf2fa;
+    --amber:#b8862f;
+    --amber-bg:#fbf0dd;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height:1.45;
+    padding:32px 20px 80px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+  header.page{margin-bottom:20px;border-bottom:2px solid var(--ink);padding-bottom:16px;}
+  header.page h1{font-size:22px;margin:0 0 4px;text-wrap:balance;}
+  header.page p{margin:2px 0;color:#555;font-size:14px;}
+  .tag{
+    display:inline-block;background:var(--paper2);border:1px solid var(--line-light);
+    border-radius:20px;padding:2px 10px;font-size:12px;margin-top:8px;color:#555;
+  }
+  .changelog{
+    background:var(--new-bg);border:1px solid var(--new);border-radius:8px;
+    padding:14px 18px;margin-bottom:24px;font-size:13.5px;color:#1f3d55;
+  }
+  .changelog-title{color:var(--new);display:block;margin-bottom:6px;font-size:13px;text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
+  .changelog ul{margin:0;padding-left:20px;}
+  .changelog li{margin-bottom:4px;}
+  .changelog li b{color:#1f3d55;}
+  .changelog.detail{margin-bottom:40px;}
+
+  section{margin-bottom:56px;}
+  h2{font-size:17px;border-left:4px solid var(--ink);padding-left:10px;margin-bottom:6px;}
+  .section-intro{color:#555;font-size:14px;margin:0 0 22px;max-width:760px;}
+
+  /* ---------- Phone mockup ---------- */
+  .phone-row{display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start;}
+  .phone{
+    width:280px;border:3px solid var(--ink);border-radius:26px;padding:10px;
+    background:#fff;flex-shrink:0;
+  }
+  .phone .notch{width:70px;height:6px;background:var(--line-light);border-radius:4px;margin:0 auto 8px;}
+  .phone-screen{border:1px dashed var(--line-light);border-radius:12px;padding:12px;min-height:520px;display:flex;flex-direction:column;}
+  .app-header{
+    border:1px solid var(--ink);border-radius:8px;padding:8px 10px;margin-bottom:10px;
+    display:flex;justify-content:space-between;align-items:center;font-size:12px;
+  }
+  .app-header .avatar{width:22px;height:22px;border:1px solid var(--ink);border-radius:50%;display:inline-block;text-align:center;line-height:20px;}
+  .offline-note{
+    font-size:10px;color:#777;border:1px dashed var(--line-light);border-radius:6px;
+    padding:3px 6px;margin-bottom:10px;text-align:center;
+  }
+  .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .tile{
+    position:relative;border:1.5px solid var(--ink);border-radius:10px;padding:14px 6px;text-align:center;
+    background:var(--paper2);
+  }
+  .tile.dim{opacity:0.6;border-style:dashed;}
+  .tile .icon{font-size:26px;display:block;margin-bottom:6px;}
+  .tile .label{font-size:12px;font-weight:600;}
+  .tile .lock{font-size:9.5px;color:var(--lock);display:block;margin-top:2px;}
+  .tile .badge{
+    position:absolute;top:-8px;right:-6px;background:var(--new);color:#fff;font-size:9px;
+    border-radius:10px;padding:2px 6px;font-weight:700;
+  }
+
+  .phone-caption{max-width:280px;font-size:13px;color:#555;margin-top:10px;}
+
+  /* ---------- Annotations (sticky notes) ---------- */
+  .note{
+    position:relative;background:var(--note-bg);border:1px solid var(--note);
+    border-radius:4px;padding:10px 12px;font-size:12.5px;color:#5c3a15;
+    max-width:250px;transform:rotate(-1deg);
+  }
+  .note b{color:var(--note);}
+  .notes-col{display:flex;flex-direction:column;gap:14px;padding-top:6px;}
+
+  /* ---------- Navigation map ---------- */
+  .nav-map{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .home-node{
+    border:2px solid var(--ink);border-radius:10px;padding:10px 22px;background:var(--paper2);
+    font-weight:700;font-size:14px;text-align:center;
+  }
+  .branch-line{width:2px;height:26px;background:var(--line);}
+  .groups{
+    display:grid;grid-template-columns:repeat(6,1fr);gap:14px;width:100%;
+  }
+  .group{display:flex;flex-direction:column;align-items:center;position:relative;}
+  .group-node{
+    border:1.5px solid var(--ink);border-radius:8px;padding:8px 6px;background:#fff;
+    text-align:center;font-size:12.5px;font-weight:700;width:100%;margin-top:14px;
+  }
+  .group-node.highlight{border:2px solid var(--new);background:var(--new-bg);}
+  .group-node .icon{display:block;font-size:20px;}
+  .group-node small{display:block;font-weight:400;font-size:9.5px;color:var(--new);margin-top:3px;}
+  .down-line{width:2px;height:14px;background:var(--line-light);}
+  .sub-list{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:4px;}
+  .sub{
+    border:1.5px dashed var(--line-light);border-radius:6px;padding:6px 5px;
+    font-size:11px;text-align:center;color:#444;background:var(--paper);
+  }
+  .sub.star{border-color:var(--star);color:var(--star);font-weight:700;background:#eef7f1;}
+  .sub.lock{border-color:var(--lock);color:var(--lock);}
+  .sub.new{border-color:var(--new);color:var(--new);font-weight:700;background:var(--new-bg);}
+
+  .groups-wrap{position:relative;width:100%;}
+  .h-connector{
+    position:absolute;top:-14px;left:8.3%;right:8.3%;height:2px;background:var(--line);
+  }
+  .group::before{
+    content:"";position:absolute;top:-14px;left:50%;width:2px;height:14px;background:var(--line);
+  }
+
+  /* ---------- Legend ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:18px;border:1px solid var(--line-light);border-radius:8px;padding:14px 18px;background:var(--paper2);font-size:12.5px;}
+  .legend .item{display:flex;align-items:center;gap:8px;}
+  .swatch{width:22px;height:14px;border-radius:3px;flex-shrink:0;}
+  .swatch.solid{border:1.5px solid var(--ink);background:#fff;}
+  .swatch.dashed{border:1.5px dashed var(--line-light);background:var(--paper);}
+  .swatch.star{border:1.5px solid var(--star);background:#eef7f1;}
+  .swatch.lock{border:1.5px solid var(--lock);background:#fff;}
+  .swatch.new{border:1.5px solid var(--new);background:var(--new-bg);}
+  .swatch.amber{border:1.5px solid var(--amber);background:var(--amber-bg);}
+
+  /* ---------- Open questions ---------- */
+  ul.open-q{margin:0;padding-left:20px;font-size:14px;}
+  ul.open-q li{margin-bottom:8px;}
+  .resolved{border:1px solid var(--star);background:#eef7f1;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
+  .resolved b{color:var(--star);display:block;margin-bottom:6px;font-size:13px;text-transform:uppercase;letter-spacing:.03em;}
+  .resolved ul{margin:0;padding-left:20px;font-size:14px;}
+  .resolved li{margin-bottom:6px;}
+
+  /* ---------- horta callout ---------- */
+  .horta-box{
+    border:1.5px solid var(--new);border-radius:8px;padding:16px 20px;background:var(--new-bg);
+    font-size:13.5px;color:#1f3d55;margin-top:18px;
+  }
+  .horta-box-title{display:block;margin-bottom:8px;color:var(--new);font-weight:700;}
+  .horta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
+  .horta-step{
+    border:1px dashed var(--new);border-radius:6px;padding:6px 8px;font-size:11.5px;background:#fff;text-align:center;
+  }
+
+  /* ---------- Step flow (Registrar alimentação) ---------- */
+  .step-flow-row{display:flex;gap:28px;overflow-x:auto;padding:6px 2px 18px;scroll-snap-type:x proximity;}
+  .step-flow-row .phone{scroll-snap-align:start;}
+  .step-card{width:280px;flex-shrink:0;}
+  .step-dots{display:flex;gap:5px;justify-content:center;margin:10px 0 2px;}
+  .step-dots span{width:7px;height:7px;border-radius:50%;background:var(--line-light);display:inline-block;}
+  .step-dots span.on{background:var(--star);}
+  .context-bar{
+    font-size:10.5px;color:#666;border:1px solid var(--line-light);border-radius:6px;
+    padding:4px 8px;margin-bottom:10px;display:flex;justify-content:space-between;background:var(--paper2);
+  }
+  .step-title{font-size:13.5px;font-weight:700;margin:2px 0 12px;line-height:1.3;}
+  .step-body{flex:1;display:flex;flex-direction:column;}
+  .mini-tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .mini-tile{
+    border:1.5px solid var(--ink);border-radius:8px;padding:10px 4px;text-align:center;background:var(--paper2);font-size:11px;font-weight:600;
+  }
+  .mini-tile .icon{font-size:20px;display:block;margin-bottom:4px;}
+  .caixa-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;}
+  .caixa-chip{
+    position:relative;border:1.5px solid var(--star);border-radius:6px;text-align:center;
+    font-size:10px;font-weight:700;padding:5px 0;background:#eef7f1;color:var(--star);
+  }
+  .caixa-chip.quase{border-color:var(--amber);background:var(--amber-bg);color:var(--amber);}
+  .caixa-chip.off{border-color:var(--line-light);border-style:dashed;background:var(--paper);color:var(--line-light);}
+  .caixa-chip .pin{
+    position:absolute;top:-7px;left:50%;transform:translateX(-50%);background:var(--new);color:#fff;
+    font-size:7.5px;border-radius:8px;padding:1px 4px;font-weight:700;white-space:nowrap;
+  }
+  .caixa-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:10px;color:#555;margin-top:10px;}
+  .caixa-legend .item{display:flex;align-items:center;gap:4px;}
+  .caixa-legend .dot{width:9px;height:9px;border-radius:3px;display:inline-block;}
+  .num-stepper{
+    display:flex;align-items:center;justify-content:center;gap:14px;border:1.5px solid var(--ink);
+    border-radius:10px;padding:16px 8px;background:var(--paper2);margin-bottom:10px;
+  }
+  .num-stepper .btn{
+    width:30px;height:30px;border:1.5px solid var(--ink);border-radius:8px;background:#fff;
+    text-align:center;line-height:28px;font-weight:700;font-size:16px;
+  }
+  .num-stepper .val{font-size:22px;font-weight:700;min-width:78px;text-align:center;font-variant-numeric:tabular-nums;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+  .chip{
+    border:1.5px solid var(--line-light);border-radius:16px;padding:6px 10px;font-size:11px;background:#fff;
+  }
+  .chip.selected{border-color:var(--star);background:#eef7f1;color:var(--star);font-weight:700;}
+  .skip-link{align-self:center;font-size:10.5px;color:var(--line-light);margin-top:8px;text-decoration:underline;}
+  .photo-btn{
+    border:2px dashed var(--ink);border-radius:10px;padding:22px 8px;text-align:center;
+    font-size:12.5px;font-weight:700;background:var(--paper2);margin-top:4px;
+  }
+  .photo-btn .req{display:block;font-size:9.5px;color:var(--lock);font-weight:400;margin-top:4px;}
+  .textarea-mock{
+    border:1.5px solid var(--line-light);border-radius:8px;padding:10px;min-height:90px;
+    font-size:11px;color:var(--line-light);background:#fff;
+  }
+  .summary-card{border:1.5px solid var(--ink);border-radius:10px;padding:10px 12px;background:#fff;font-size:11px;}
+  .summary-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line-light);}
+  .summary-row:last-child{border-bottom:none;}
+  .summary-row .k{color:#666;}
+  .summary-row .v{font-weight:700;}
+  .save-btn{
+    margin-top:12px;border:1.5px solid var(--star);border-radius:10px;padding:12px;text-align:center;
+    background:#eef7f1;color:var(--star);font-weight:700;font-size:13px;
+  }
+
+  footer{border-top:1px solid var(--line-light);margin-top:50px;padding-top:14px;font-size:12px;color:#888;}
+
+  @media (max-width:900px){
+    .groups{grid-template-columns:repeat(3,1fr);}
+    .h-connector, .group::before{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="page">
+    <h1>App Coletivo — Wireframes do Módulo 1 (Pátio de Compostagem)</h1>
+    <p>Estrutura 100% fechada (rodada 7) + primeira tela detalhada: <b>Compostagem → Registrar alimentação</b>.</p>
+    <p>Baixa fidelidade, sem interação — o objetivo aqui é validar a estrutura e o fluxo antes de construir a tela de verdade.</p>
+    <span class="tag">App Coletivo · Módulo 1 · atualizado 21/08/2026</span>
+  </header>
+
+  <div class="changelog detail" style="background:var(--new-bg);border-color:var(--new);">
+    <span class="changelog-title">Novidade desta rodada — detalhamento de tela</span>
+    <ul>
+      <li><b>Compostagem → Registrar alimentação</b> detalhada como fluxo de 6 passos, um assunto por tela — ver seção 6, mais abaixo.</li>
+      <li>Reflete dados reais da planilha: 26 caixas (18 ativas, 4 "não ativadas", 4 novas), campo de foto obrigatório, temperatura opcional.</li>
+      <li>Nomes de loja são placeholder (<b>Loja 1</b> a <b>Loja 5</b> + <b>Construtora</b>) — falta confirmar os nomes reais dos 5 restaurantes parceiros.</li>
+    </ul>
+  </div>
+
+  <div class="changelog" style="background:#eaf7ea;border-color:#2f6b4f;">
+    <span class="changelog-title" style="color:#2f6b4f;">Fechamento definitivo (rodada 7) — 2 confirmações finais</span>
+    <ul>
+      <li><b>Convenção de pastas do Drive, corrigida:</b> nível 1 por <b>Mês/Ano</b> por extenso (ex.: "Agosto/26"); nível 2, dentro do mês, por <b>dia_mês</b> (ex.: "20/8"). Substitui a leitura abreviada ("08_26"/"01_08") que tinha sido registrada errada na rodada 6.</li>
+      <li><b>Registrar ocorrência atípica</b> é <b>exceção confirmada</b> à regra de "Mais = só coordenação": qualquer funcionária pode relatar uma ocorrência que presenciou, mesmo sem acesso ao resto do bloco "Mais".</li>
+    </ul>
+  </div>
+
+  <div class="changelog" style="background:#eef2fa;border-color:var(--new);">
+    <span class="changelog-title" style="color:var(--new);">Ajustes finais (rodada 6)</span>
+    <ul>
+      <li><b>Link do Drive registrado</b> pra este piloto (guardado no Registro Geral) — mas o app deve ter, no futuro, uma tela de configuração pra a própria equipe trocar esse link quando quiser, sem depender de ninguém mexer no código.</li>
+      <li>Novo item em <b>"Mais"</b>: <b>Registrar ocorrência atípica</b> (com foto, indo pro mesmo Drive, usando o título do relato como nome/identificação da foto).</li>
+    </ul>
+  </div>
+
+  <div class="changelog" style="background:#eef7f1;border-color:var(--star);">
+    <span class="changelog-title" style="color:var(--star);">Fechamento (rodada 5) — últimas decisões técnicas + 1 novo dado</span>
+    <ul>
+      <li><b>Acesso por papel simplificado:</b> só o bloco "Mais" é exclusivo de coordenação — todo o resto (Compostagem, Horta, Meu Ponto próprio, Agenda, Venda) é visível pra funcionária normalmente.</li>
+      <li><b>Drive do coletivo:</b> upload automático, a partir de um link de pasta que a própria equipe fornece.</li>
+      <li><b>Agenda → pendência de registro</b> vale desde já pra atividades de Horta/Compostagem e para mutirões, oficinas e visitas.</li>
+      <li><b>Novo dado no relatório do lojista:</b> mensagem de impacto (resíduo → composto), por proporção de peso.</li>
+    </ul>
+  </div>
+
+  <section>
+    <h2>1. Tela inicial do módulo Pátio</h2>
+    <p class="section-intro">
+      Tela que a equipe vê depois de escolher "Pátio de Compostagem" na tela de abertura do app.
+      6 blocos grandes — ícone + 1 palavra.
+    </p>
+    <div class="phone-row">
+      <div>
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header">
+              <span>🌿 Pátio de Compostagem</span>
+              <span class="avatar">👤</span>
+            </div>
+            <div class="offline-note">📶 recurso já existe no código: aviso de "sem internet"</div>
+            <div class="tile-grid">
+              <div class="tile">
+                <span class="icon">🌱</span>
+                <span class="label">Compostagem</span>
+              </div>
+              <div class="tile">
+                <span class="badge">maior</span>
+                <span class="icon">🌻</span>
+                <span class="label">Horta</span>
+              </div>
+              <div class="tile">
+                <span class="icon">⏰</span>
+                <span class="label">Meu Ponto</span>
+              </div>
+              <div class="tile">
+                <span class="icon">📅</span>
+                <span class="label">Agenda</span>
+              </div>
+              <div class="tile">
+                <span class="badge">novo</span>
+                <span class="icon">📦</span>
+                <span class="label">Venda</span>
+              </div>
+              <div class="tile">
+                <span class="icon">⚙️</span>
+                <span class="label">Mais</span>
+                <span class="lock">🔒 maioria coord. · 🔓 ocorrência: todas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="phone-caption">Ao tocar em Compostagem, a primeira opção é "Registrar alimentação" — detalhada na seção 6.</p>
+      </div>
+
+      <div class="notes-col">
+        <div class="note">
+          <b>Compostagem + Adubo juntos</b><br>
+          Adubo é resultado direto da compostagem, não faz sentido como jornada separada pra quem trabalha nisso no dia a dia.
+        </div>
+        <div class="note">
+          <b>"Mais" com acesso misto</b><br>
+          A maioria do bloco segue exclusiva de coordenação. Única exceção: <b>Registrar ocorrência atípica</b>, aberta pra qualquer funcionária.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Mapa de navegação</h2>
+    <p class="section-intro">
+      ★ = prioridade sugerida pra desenhar em detalhe primeiro (já feito, ver seção 6). 🔒 = restrito por papel.
+    </p>
+
+    <div class="nav-map">
+      <div class="home-node">🌿 Tela inicial do módulo Pátio</div>
+      <div class="branch-line"></div>
+
+      <div class="groups-wrap">
+        <div class="h-connector"></div>
+        <div class="groups">
+
+          <div class="group">
+            <div class="group-node"><span class="icon">🌱</span>Compostagem</div>
+            <div class="down-line"></div>
+            <div class="sub-list">
+              <div class="sub">Ver caixas (status, peso)</div>
+              <div class="sub star">★ Registrar alimentação <br>📷 com foto · detalhada →</div>
+              <div class="sub">Registrar adubo (líq./sólido)</div>
+              <div class="sub">Análise sensorial</div>
+              <div class="sub">Água e energia</div>
+              <div class="sub new">🏪 Controle de bombonas <br>tela própria do lojista</div>
+              <div class="sub new">🏪 Relatório da própria loja<br>+ mensagem de impacto</div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-node highlight"><span class="icon">🌻</span>Horta<small>bem maior que a rodada 1</small></div>
+            <div class="down-line"></div>
+            <div class="sub-list">
+              <div class="sub new">Cultivo (germinação → colheita)</div>
+              <div class="sub">Plantio por <b>canteiro</b></div>
+              <div class="sub new">Manejo (capina, adubação, poda)</div>
+              <div class="sub">Registrar colheita <br>📷 com foto</div>
+              <div class="sub">Perdas / aproveitamento</div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-node"><span class="icon">⏰</span>Meu Ponto</div>
+            <div class="down-line"></div>
+            <div class="sub-list">
+              <div class="sub lock">🔒 Bater ponto (GPS — dado sensível, LGPD)</div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-node"><span class="icon">📅</span>Agenda</div>
+            <div class="down-line"></div>
+            <div class="sub-list">
+              <div class="sub star">🔗 Atividades da equipe<br>(Horta/Compostagem)</div>
+              <div class="sub">Folgas e férias</div>
+              <div class="sub star">🔗 Mutirões / oficinas / visitas</div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-node highlight"><span class="icon">📦</span>Venda<small>bloco novo</small></div>
+            <div class="down-line"></div>
+            <div class="sub-list">
+              <div class="sub">Registrar doação (alimento/adubo)</div>
+              <div class="sub new">🔜 Planejamento da feira</div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-node"><span class="icon">⚙️</span>Mais</div>
+            <div class="down-line"></div>
+            <div class="sub-list">
+              <div class="sub lock">🔒 Avisos (contato com o shopping)</div>
+              <div class="sub lock">🔒 Financeiro</div>
+              <div class="sub lock">🔒 Relatórios ESG/ODS <br>(inclui fotos curadas)</div>
+              <div class="sub lock">🔒 📁 Arquivo de fotos<br>(link pro Drive do coletivo)</div>
+              <div class="sub new">⚠️ Registrar ocorrência atípica<br>📷 com foto · 🔓 qualquer funcionária</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="horta-box">
+      <span class="horta-box-title">Por que Horta cresceu tanto</span>
+      Duas planilhas reais mostraram que o cultivo tem um ciclo completo — parecido em riqueza com o de Compostagem —
+      e um histórico de uso real e constante (637 colheitas registradas, 69 espécies, de set/2023 a jun/2025):
+      <div class="horta-grid">
+        <div class="horta-step">Germinação</div>
+        <div class="horta-step">Transplante</div>
+        <div class="horta-step">Plantio / setor</div>
+        <div class="horta-step">Manejo</div>
+        <div class="horta-step">Previsão de colheita</div>
+        <div class="horta-step">Colheita real</div>
+        <div class="horta-step">Perdas / doação</div>
+      </div>
+    </div>
+
+    <div class="horta-box" style="border-color:var(--star);background:#eef7f1;color:#1f4a34;">
+      <span class="horta-box-title" style="color:var(--star);">🔗 Princípio: Agenda gera pendência de registro</span>
+      Quando algo é programado na Agenda (ex.: manejo no Canteiro 8, dia 25/08), o app cria automaticamente uma
+      <b>pendência vinculada</b> à tela de registro daquela atividade, pronta pra ser preenchida no dia. Vale desde já
+      pra atividades de equipe em Horta e Compostagem, e para mutirões/oficinas/visitas.
+    </div>
+
+    <div class="horta-box" style="border-color:var(--star);background:#eef7f1;color:#1f4a34;">
+      <span class="horta-box-title" style="color:var(--star);">📊 Mensagem de impacto no relatório do lojista</span>
+      Cálculo por proporção de peso — quanto do resíduo daquela loja específica virou composto:
+      <div style="border:1px dashed var(--star);border-radius:6px;padding:10px 14px;margin-top:10px;background:#fff;font-style:italic;font-size:12.5px;">
+        "Sua loja contribuiu com <b>142 kg</b> de resíduo este mês. Isso ajudou a gerar aproximadamente
+        <b>38 kg</b> de composto sólido e <b>15 L</b> de biofertilizante líquido, usados na produção
+        agroecológica de alimentos aqui na cidade — <b>142 kg que deixaram de ir pro aterro</b>."
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Legenda</h2>
+    <div class="legend">
+      <div class="item"><span class="swatch solid"></span> tela/bloco já estruturado</div>
+      <div class="item"><span class="swatch dashed"></span> placeholder — tela ainda não desenhada</div>
+      <div class="item"><span class="swatch star"></span> ★ prioridade / detalhada</div>
+      <div class="item"><span class="swatch lock"></span> 🔒 restrito por papel</div>
+      <div class="item"><span class="swatch new"></span> 🆕 achado / novo</div>
+      <div class="item"><span class="swatch amber"></span> ⚠️ atenção (ex.: caixa quase cheia)</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. O que ficou resolvido até a rodada 7</h2>
+    <div class="resolved">
+      <b>Decisões confirmadas</b>
+      <ul>
+        <li><b>Acesso por papel:</b> funcionária, coordenação e lojista têm visões diferentes.</li>
+        <li><b>Login:</b> PIN numérico, biometria (digital) e login social — não travar em uma só opção.</li>
+        <li><b>Agrupamento da tela inicial:</b> Compostagem (com Adubo dentro), Horta, Meu Ponto, Agenda, Venda, Mais.</li>
+        <li><b>Lojista</b> confirmado como 3º tipo de usuário: acessa o mesmo app/PWA (visão restrita), com tela própria de bombonas e relatório da própria loja.</li>
+        <li><b>Terminologia:</b> "leira" (Horta) vira <b>Canteiro</b> em todo o app.</li>
+        <li><b>Evidência fotográfica</b> em Registrar alimentação e Registrar colheita — vira relatório curado em "Mais → Relatórios" e também fica acessível via link pro Drive do coletivo.</li>
+        <li><b>Manejo</b> vira item próprio dentro de Horta.</li>
+        <li><b>Agenda gera pendência de registro</b> vinculada à tela certa.</li>
+        <li><b>Drive:</b> link real registrado; convenção de pastas: <b>Mês/Ano</b> (ex.: "Agosto/26") no nível 1, <b>dia_mês</b> (ex.: "20/8") no nível 2.</li>
+        <li><b>Registrar ocorrência atípica</b> (em "Mais") é exceção confirmada: visível pra qualquer funcionária.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Estrutura 100% fechada</h2>
+    <p class="section-intro">
+      Todas as perguntas estruturais foram respondidas. O que resta é implementação técnica e o detalhamento
+      das demais telas — a primeira delas está na seção 6.
+    </p>
+    <ul class="open-q">
+      <li>Fórmula exata do cálculo de impacto do lojista — pode começar simples e refinar depois.</li>
+      <li>Implementação técnica (RLS por papel no Supabase, integração com Google Drive API, modelo de dados da pendência de Agenda, tela de configuração do link do Drive) — trabalho de desenvolvimento, não de produto.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. Detalhamento — Compostagem → Registrar alimentação</h2>
+    <p class="section-intro">
+      Maior volume isolado da planilha real (1.027 registros). Fluxo de <b>6 passos, um assunto por tela</b> —
+      em vez de um formulário longo — pra reduzir o esforço de quem tem menos prática com apps. "Quem registrou"
+      e "data" já vêm preenchidos sozinhos (login e data de hoje), sem perguntar nada disso.
+    </p>
+
+    <div class="step-flow-row">
+
+      <div class="step-card">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header"><span>🌱 Registrar alimentação</span><span class="avatar">👤</span></div>
+            <div class="context-bar"><span>📅 Hoje, 21/8</span><span>👤 Você</span></div>
+            <div class="step-body">
+              <div class="step-title">Passo 1 de 6 — De qual loja veio esse resíduo?</div>
+              <div class="mini-tile-grid">
+                <div class="mini-tile"><span class="icon">🍽️</span>Loja 1</div>
+                <div class="mini-tile"><span class="icon">🍽️</span>Loja 2</div>
+                <div class="mini-tile"><span class="icon">🍽️</span>Loja 3</div>
+                <div class="mini-tile"><span class="icon">🍽️</span>Loja 4</div>
+                <div class="mini-tile"><span class="icon">🍽️</span>Loja 5</div>
+                <div class="mini-tile"><span class="icon">🏗️</span>Construtora</div>
+              </div>
+            </div>
+            <div class="step-dots"><span class="on"></span><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
+        </div>
+        <p class="phone-caption">Nomes reais dos 5 restaurantes ainda não confirmados — placeholder por ora.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header"><span>🌱 Registrar alimentação</span><span class="avatar">👤</span></div>
+            <div class="context-bar"><span>📅 Hoje, 21/8</span><span>🏪 Loja 3</span></div>
+            <div class="step-body">
+              <div class="step-title">Passo 2 de 6 — Em qual caixa vai?</div>
+              <div class="caixa-grid">
+                <div class="caixa-chip">1</div><div class="caixa-chip quase">2</div><div class="caixa-chip">3</div>
+                <div class="caixa-chip">4</div><div class="caixa-chip"><span class="pin">sugerida</span>5</div><div class="caixa-chip quase">6</div>
+                <div class="caixa-chip">7</div><div class="caixa-chip">8</div><div class="caixa-chip quase">9</div>
+                <div class="caixa-chip">10</div><div class="caixa-chip">11</div><div class="caixa-chip">12</div>
+                <div class="caixa-chip">13</div><div class="caixa-chip quase">14</div><div class="caixa-chip">15</div>
+                <div class="caixa-chip">16</div><div class="caixa-chip">17</div><div class="caixa-chip">18</div>
+                <div class="caixa-chip off">19</div><div class="caixa-chip off">20</div><div class="caixa-chip off">21</div>
+                <div class="caixa-chip off">22</div><div class="caixa-chip off">23</div><div class="caixa-chip off">24</div>
+              </div>
+              <div class="caixa-legend">
+                <span class="item"><span class="dot" style="background:#eef7f1;border:1.5px solid var(--star);"></span>disponível</span>
+                <span class="item"><span class="dot" style="background:var(--amber-bg);border:1.5px solid var(--amber);"></span>quase cheia</span>
+                <span class="item"><span class="dot" style="background:var(--paper);border:1.5px dashed var(--line-light);"></span>não ativada / nova</span>
+              </div>
+            </div>
+            <div class="step-dots"><span class="on"></span><span class="on"></span><span></span><span></span><span></span><span></span></div>
+          </div>
+        </div>
+        <p class="phone-caption">26 caixas reais: 18 em uso, 4 "não ativadas" e 4 novas aguardando brita — essas 8 aparecem apagadas, não dá pra escolher.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header"><span>🌱 Registrar alimentação</span><span class="avatar">👤</span></div>
+            <div class="context-bar"><span>🏪 Loja 3</span><span>📦 Caixa 5</span></div>
+            <div class="step-body">
+              <div class="step-title">Passo 3 de 6 — Quanto pesou e que tipo era?</div>
+              <div class="num-stepper">
+                <span class="btn">−</span><span class="val">12,4 kg</span><span class="btn">+</span>
+              </div>
+              <div class="chip-row">
+                <span class="chip selected">🍎 Alimento</span>
+                <span class="chip">🌿 Poda / verde</span>
+                <span class="chip">🥬 Outro orgânico</span>
+              </div>
+            </div>
+            <div class="step-dots"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div>
+          </div>
+        </div>
+        <p class="phone-caption">Botões grandes de +/− em vez de teclado numérico — mais fácil de acertar com o dedo em campo.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header"><span>🌱 Registrar alimentação</span><span class="avatar">👤</span></div>
+            <div class="context-bar"><span>🍎 Alimento</span><span>12,4 kg</span></div>
+            <div class="step-body">
+              <div class="step-title">Passo 4 de 6 — Temperatura e uma foto</div>
+              <div class="num-stepper">
+                <span class="btn">−</span><span class="val">34 °C</span><span class="btn">+</span>
+              </div>
+              <a class="skip-link" style="align-self:center;">pular temperatura</a>
+              <div class="photo-btn">📷 Tirar foto<span class="req">obrigatório</span></div>
+            </div>
+            <div class="step-dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div>
+          </div>
+        </div>
+        <p class="phone-caption">Temperatura é opcional (nem toda entrega é medida hoje); a foto não — alimenta o relatório da coordenação e o Drive.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header"><span>🌱 Registrar alimentação</span><span class="avatar">👤</span></div>
+            <div class="context-bar"><span>📷 1 foto</span><span>34 °C</span></div>
+            <div class="step-body">
+              <div class="step-title">Passo 5 de 6 — Quer contar mais alguma coisa?</div>
+              <div class="textarea-mock">Ex.: "chegou com bastante casca de fruta hoje"...</div>
+              <a class="skip-link" style="align-self:center;">pular, sem observação</a>
+            </div>
+            <div class="step-dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div>
+          </div>
+        </div>
+        <p class="phone-caption">Campo livre, opcional — de olho num futuro "falar em vez de digitar" pra quem prefere.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="phone-screen">
+            <div class="app-header"><span>🌱 Registrar alimentação</span><span class="avatar">👤</span></div>
+            <div class="context-bar"><span>📅 Hoje, 21/8</span><span>👤 Você</span></div>
+            <div class="step-body">
+              <div class="step-title">Passo 6 de 6 — Confere antes de salvar</div>
+              <div class="summary-card">
+                <div class="summary-row"><span class="k">Loja</span><span class="v">Loja 3 ✏️</span></div>
+                <div class="summary-row"><span class="k">Caixa</span><span class="v">Caixa 5 ✏️</span></div>
+                <div class="summary-row"><span class="k">Peso</span><span class="v">12,4 kg ✏️</span></div>
+                <div class="summary-row"><span class="k">Tipo</span><span class="v">Alimento ✏️</span></div>
+                <div class="summary-row"><span class="k">Temp.</span><span class="v">34 °C ✏️</span></div>
+                <div class="summary-row"><span class="k">Foto</span><span class="v">1 anexada ✏️</span></div>
+              </div>
+              <div class="save-btn">✅ Salvar registro</div>
+              <div class="offline-note" style="margin-top:8px;margin-bottom:0;">📶 Sem internet agora? Sem problema — fica guardado no celular e envia sozinho quando voltar o sinal.</div>
+            </div>
+            <div class="step-dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></div>
+          </div>
+        </div>
+        <p class="phone-caption">Cada linha é editável (✏️) sem precisar refazer o fluxo inteiro do zero.</p>
+      </div>
+
+    </div>
+
+    <div class="phone-row" style="margin-top:8px;">
+      <div class="notes-col" style="max-width:900px;">
+        <div class="note" style="transform:rotate(0);max-width:100%;">
+          <b>Por que 6 telas em vez de 1 formulário?</b> Uma pergunta grande por vez, com botões e ícones em vez de
+          campos de texto — reduz a chance de erro e não exige familiaridade prévia com formulários digitais.
+          "Quem registrou" e "data" nunca são perguntados: o app já sabe.
+        </div>
+        <div class="note" style="transform:rotate(0);max-width:100%;">
+          <b>Caixa "sugerida" (passo 2):</b> é só uma ideia de wireframe por enquanto — quando a previsão de lotação
+          das caixas (funcionalidade pendente, seção 6 do Registro Geral) existir de verdade, ela pode sugerir
+          automaticamente a caixa certa em vez da pessoa ter que adivinhar.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    App Coletivo · Wireframe de baixa fidelidade — estrutura 100% fechada, tela de Registrar alimentação detalhada.
+    Próxima etapa sugerida: detalhar Registrar colheita (Horta) ou Ver caixas (Compostagem).
+  </footer>
+
+</div>
+
+</body>
+</html>
