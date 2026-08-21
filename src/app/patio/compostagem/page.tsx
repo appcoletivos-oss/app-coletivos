@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
 
 // Hub do bloco Compostagem (ver wireframe, seção 1 e 2). Por enquanto só
-// "Registrar alimentação" está construída de verdade — as outras opções
+// "Registrar compostagem" está construída de verdade — as outras opções
 // (ver caixas, adubo, análise sensorial, água/energia, bombonas do
 // lojista, relatório da loja) ainda são placeholder, uma de cada vez.
 const ITENS = [
-  { href: "/patio/compostagem/registrar-alimentacao", icone: "📥", rotulo: "Registrar alimentação", pronto: true },
-  { href: "#", icone: "📦", rotulo: "Ver caixas", pronto: false },
+  { href: "/patio/compostagem/registrar-alimentacao", icone: "📥", rotulo: "Registrar compostagem", pronto: true },
+  { href: "#", icone: null, rotulo: "Ver caixas", pronto: false },
   { href: "#", icone: "🧪", rotulo: "Registrar adubo", pronto: false },
   { href: "#", icone: "👃", rotulo: "Análise sensorial", pronto: false },
   { href: "#", icone: "💧", rotulo: "Água e energia", pronto: false },
@@ -35,7 +36,7 @@ export default function CompostagemPage() {
                 : "pointer-events-none border-dashed border-zinc-300 text-zinc-400",
             ].join(" ")}
           >
-            <span className="mb-1 block text-2xl">{item.icone}</span>
+            <span className="mb-1 block text-2xl">{item.icone ?? <IconeCaixaDagua className="mx-auto" />}</span>
             {item.rotulo}
             {!item.pronto && <span className="mt-1 block text-[10px] font-normal">em breve</span>}
           </Link>

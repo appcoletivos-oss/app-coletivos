@@ -49,6 +49,35 @@ export interface Canteiro {
   observacoes: string | null;
 }
 
+export type PapelEquipe = "funcionaria" | "coordenacao";
+export type StatusMembroEquipe = "convidado" | "ativo" | "inativo";
+
+// Membro da equipe (funcionária/coordenação). "Remover" pela tela de
+// Cadastro sempre desativa (status = "inativo"), nunca apaga a linha —
+// mesma lógica de memória histórica de parceiros/canteiros.
+export interface MembroEquipe {
+  id: string;
+  nome: string;
+  papel: PapelEquipe;
+  whatsapp: string;
+  status: StatusMembroEquipe;
+  convite_token: string | null;
+  convite_criado_em: string | null;
+  convite_expira_em: string | null;
+  user_id: string | null;
+  vinculado_desde: string;
+  vinculado_ate: string | null;
+}
+
+// Dados públicos mínimos que a tela de convite (/convite/[token]) recebe
+// da function `buscar_convite_por_token` — nunca a linha inteira de
+// membros_equipe (ver nota de segurança na migration da Equipe).
+export interface ConvitePreCadastro {
+  nome: string;
+  papel: PapelEquipe;
+  valido: boolean;
+}
+
 export type TipoResiduo = "alimento" | "poda_verde" | "outro_organico";
 
 // Dados que a tela de Registrar alimentação precisa enviar pra salvar um

@@ -1,6 +1,6 @@
 "use client";
 
-// Compostagem → Registrar alimentação
+// Compostagem → Registrar compostagem
 //
 // Fluxo de 6 passos, uma pergunta por tela, em vez de um formulário longo
 // — decisão de acessibilidade do projeto (ver wireframe publicado e
@@ -25,6 +25,7 @@ import {
   tentarEnviarFilaOffline,
 } from "@/lib/fila-offline";
 import type { Caixa, NovoRegistroAlimentacao, Parceiro, TipoResiduo } from "@/lib/types";
+import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
 
 const TOTAL_PASSOS = 6;
 
@@ -178,7 +179,7 @@ export default function RegistrarAlimentacaoPage() {
 
   if (carregando) {
     return (
-      <TelaBase titulo="Registrar alimentação">
+      <TelaBase titulo="Registrar compostagem">
         <p className="text-center text-sm text-zinc-600">Carregando lojas e caixas…</p>
       </TelaBase>
     );
@@ -186,7 +187,7 @@ export default function RegistrarAlimentacaoPage() {
 
   if (erroCarregamento) {
     return (
-      <TelaBase titulo="Registrar alimentação">
+      <TelaBase titulo="Registrar compostagem">
         <p className="text-center text-sm text-red-700">{erroCarregamento}</p>
       </TelaBase>
     );
@@ -194,7 +195,7 @@ export default function RegistrarAlimentacaoPage() {
 
   if (resultado) {
     return (
-      <TelaBase titulo="Registrar alimentação">
+      <TelaBase titulo="Registrar compostagem">
         <div className="flex flex-col items-center gap-4 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2e6b3e] text-2xl text-white">
             {resultado === "ok" ? "✅" : "📶"}
@@ -206,7 +207,7 @@ export default function RegistrarAlimentacaoPage() {
           </p>
           <p className="max-w-xs text-sm text-zinc-600">
             {resultado === "ok"
-              ? "Alimentação registrada com sucesso."
+              ? "Registro de compostagem salvo com sucesso."
               : "Assim que a conexão voltar, este registro é enviado sozinho. Não precisa fazer nada."}
           </p>
           <div className="mt-2 flex flex-col gap-3">
@@ -215,7 +216,7 @@ export default function RegistrarAlimentacaoPage() {
               onClick={recomecar}
               className="rounded-full bg-[#2e6b3e] px-6 py-3 text-sm font-semibold text-white"
             >
-              Registrar outra alimentação
+              Registrar outra compostagem
             </button>
             <Link
               href="/patio/compostagem"
@@ -230,7 +231,7 @@ export default function RegistrarAlimentacaoPage() {
   }
 
   return (
-    <TelaBase titulo="Registrar alimentação">
+    <TelaBase titulo="Registrar compostagem">
       <BarraContexto parceiro={parceiroSelecionado} caixa={caixaSelecionada} passo={passo} />
       <PontosPasso passo={passo} total={TOTAL_PASSOS} />
 
@@ -480,7 +481,11 @@ function BarraContexto({
   return (
     <div className="mb-2 flex justify-between rounded-lg border border-zinc-300 bg-[#f1efe6] px-3 py-1 text-[11px] text-zinc-600">
       <span>🏪 {parceiro?.nome ?? "—"}</span>
-      {caixa && <span>📦 Caixa {caixa.numero}</span>}
+      {caixa && (
+        <span className="inline-flex items-center gap-1">
+          <IconeCaixaDagua /> Caixa {caixa.numero}
+        </span>
+      )}
     </div>
   );
 }

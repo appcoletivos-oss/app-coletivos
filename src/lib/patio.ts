@@ -3,7 +3,15 @@
 // telas — se o schema mudar, o ajuste fica só aqui.
 
 import { supabase } from "./supabase";
-import type { Caixa, NovoRegistroAlimentacao, Parceiro } from "./types";
+import type {
+  Caixa,
+  Canteiro,
+  NovoRegistroAlimentacao,
+  Parceiro,
+  StatusCaixa,
+  TipoCanteiro,
+  TipoParceiro,
+} from "./types";
 
 // Lista só os parceiros ativos, em ordem alfabética — é o que a tela de
 // Registrar alimentação mostra no passo "De qual loja veio esse resíduo?".
@@ -63,4 +71,176 @@ export async function enviarFotoRegistro(foto: File): Promise<string> {
 
   if (error) throw error;
   return caminho;
+}
+
+// -----------------------------------------------------------------------------
+// Cadastro → Parceiros e Canteiros
+//
+// As duas tabelas seguem a mesma lógica de memória histórica (ver
+// comentário no topo da migration): "corrigir nome" atualiza a mesma
+// linha; "encerrar e substituir" marca a linha atual como encerrada e
+// cadastra uma linha nova, sem nunca sobrescrever a antiga.
+// -----------------------------------------------------------------------------
+
+export async function criarParceiro(dados: {
+  nome: string;
+  tipo: TipoParceiro;
+}): Promise<Parceiro> {
+  const { data, error } = await supabase
+    .from("parceiros")
+    .insert({ nome: dados.nome.trim(), tipo: dados.tipo })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Corrige o nome de um parceiro já cadastrado (ex.: "Loja 1" → nome
+// real). Não mexe em `ativo` nem em vínculo — é só um ajuste de texto.
+export async function renomearParceiro(id: string, nome: string): Promise<void> {
+  const { error } = await supabase
+    .from("parceiros")
+    .update({ nome: nome.trim() })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+// Turnover de verdade: encerra o parceiro atual (ativo = false,
+// vinculado_ate = hoje) e cadastra o novo que entra no lugar — os
+// registros antigos continuam apontando pro parceiro encerrado, intactos.
+export async function encerrarESubstituirParceiro(
+  idAntigo: string,
+  novo: { nome: string; tipo: TipoParceiro },
+): Promise<Parceiro> {
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const { error: erroEncerrar } = await supabase
+    .from("parceiros")
+    .update({ ativo: false, vinculado_ate: hoje })
+    .eq("id", idAntigo);
+  if (erroEncerrar) throw erroEncerrar;
+
+  return criarParceiro(novo);
+}
+
+export async function listarCanteiros(): Promise<Canteiro[]> {
+  const { data, error } = await supabase
+    .from("canteiros")
+    .select("*")
+    .eq("ativo", true)
+    .order("nome", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function criarCanteiro(dados: {
+  nome: string;
+  tipo: TipoCanteiro;
+  area_m2?: number | null;
+  capacidade_texto?: string | null;
+}): Promise<Canteiro> {
+  const { data, error } = await supabase
+    .from("canteiros")
+    .insert({
+      nome: dados.nome.trim(),
+      tipo: dados.tipo,
+      area_m2: dados.area_m2 ?? null,
+      capacidade_texto: dados.capacidade_texto?.trim() || null,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function renomearCanteiro(id: string, nome: string): Promise<void> {
+  const { error } = await supabase
+    .from("canteiros")
+    .update({ nome: nome.trim() })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function encerrarESubstituirCanteiro(
+  idAntigo: string,
+  novo: { nome: string; tipo: TipoCanteiro; area_m2?: number | null; capacidade_texto?: string | null },
+): Promise<Canteiro> {
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const { error: erroEncerrar } = await supabase
+    .from("canteiros")
+    .update({ ativo: false, vinculado_ate: hoje })
+    .eq("id", idAntigo);
+  if (erroEncerrar) throw erroEncerrar;
+
+  return criarCanteiro(novo);
+}
+
+// -----------------------------------------------------------------------------
+// Cadastro → Caixas
+//
+// Diferente de parceiros/canteiros, uma caixa não "vira" outra caixa —
+// ela só entra ou sai de operação. Por isso não tem o padrão de
+// renomear/substituir: só cadastrar caixa nova e mudar o `status` (que já
+// existe desde a migration original, incluindo "desativada" pra uma
+// caixa com defeito retirada de circulação).
+// -----------------------------------------------------------------------------
+
+// Sugestão do próximo número livre — só um ponto de partida pro
+// formulário; a coordenação pode digitar outro número se quiser.
+export function proximoNumeroCaixa(caixas: Caixa[]): number {
+  return caixas.reduce((maior, c) => Math.max(maior, c.numero), 0) + 1;
+}
+
+export async function criarCaixa(dados: {
+  numero: number;
+  status: StatusCaixa;
+  capacidade_kg: number;
+  observacoes?: string | null;
+}): Promise<Caixa> {
+  const { data, error } = await supabase
+    .from("caixas")
+    .insert({
+      numero: dados.numero,
+      status: dados.status,
+      capacidade_kg: dados.capacidade_kg,
+      observacoes: dados.observacoes?.trim() || null,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function atualizarCaixa(
+  id: string,
+  dados: { status: StatusCaixa; capacidade_kg: number; observacoes?: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from("caixas")
+    .update({
+      status: dados.status,
+      capacidade_kg: dados.capacidade_kg,
+      observacoes: dados.observacoes?.trim() || null,
+    })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+// "Retirar" uma caixa com defeito = marcar desativada, nunca apagar a
+// linha — registros_alimentacao antigos continuam apontando pra ela.
+export async function desativarCaixa(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("caixas")
+    .update({ status: "desativada" as StatusCaixa })
+    .eq("id", id);
+
+  if (error) throw error;
 }
