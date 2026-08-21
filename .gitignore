@@ -40,3 +40,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ferramentas de agente/skills (cache local do Claude Code/Cowork — não é
+# parte do app, não precisa ir pro controle de versão)
+.agents/
+.claude/
+skills-lock.json
+
+# material de apoio (planilhas reais, wireframes) — fica só na pasta local,
+# fora do git, porque algumas planilhas têm nome real de gente da equipe
+/Arquivos extras/
