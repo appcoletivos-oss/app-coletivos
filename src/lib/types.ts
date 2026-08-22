@@ -114,3 +114,44 @@ export interface NovoRegistroColheita {
   foto_url?: string | null;
   observacao?: string | null;
 }
+
+export type TipoManejo = "capina_seletiva" | "adubacao" | "poda" | "raleamento" | "outro";
+
+// Dados que a tela de Horta → Manejo precisa enviar pra salvar um registro
+// novo (capina seletiva, adubação, poda, raleamento).
+export interface NovoRegistroManejo {
+  canteiro_id: string;
+  tipo_manejo: TipoManejo;
+  observacao?: string | null;
+  foto_url?: string | null;
+}
+
+// Dados que a tela de Compostagem → Análise sensorial precisa enviar pra
+// salvar um registro novo. Os três campos são texto livre e opcionais —
+// ver nota sobre gravação de áudio como melhoria futura em
+// analise-sensorial/page.tsx.
+export interface NovoRegistroAnaliseSensorial {
+  caixa_id: string;
+  visao?: string | null;
+  olfato?: string | null;
+  tato?: string | null;
+}
+
+// Dados que a tela de Compostagem → Controle de bombonas precisa enviar
+// pra salvar um registro novo. `registrado_por` é obrigatório na tela
+// (texto livre, digitado por quem registra) mesmo sendo opcional no banco
+// — ver migration 20260822180000 sobre por que não é um uuid de
+// auth.users como nas demais tabelas de registro.
+export interface NovoRegistroBombona {
+  parceiro_id: string;
+  numero_bombona: string;
+  data_entrega: string;
+  data_devolucao?: string | null;
+  higienizada?: boolean | null;
+  tampa_fechada?: boolean | null;
+  adesivo_presente?: boolean | null;
+  odor?: number | null;
+  preenchida_corretamente?: boolean | null;
+  observacao?: string | null;
+  registrado_por: string;
+}

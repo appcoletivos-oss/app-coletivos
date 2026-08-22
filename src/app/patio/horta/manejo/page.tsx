@@ -1,0 +1,344 @@
+"use client";
+
+// Horta → Manejo
+//
+// Registro de manejo recorrente por canteiro (capina seletiva, adubação,
+// poda, raleamento). Fluxo de 4 passos — mais curto que Registrar
+// colheita porque foto e observação são opcionais aqui e cabem juntas num
+// só passo. "Quem registrou" e "data" nunca são perguntados: vêm da
+// sessão de login e do relógio do aparelho.
+//
+// Os pedaços de tela (TelaBase, Passo, BotaoGrande etc.) vêm de
+// @/components/fluxo-registro — compartilhados com as demais telas de
+// registro, pra não duplicar essa UI a cada fluxo novo.
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
+import { iconeTipoCanteiro, salvarRegistroManejo } from "@/lib/horta";
+import { criarFilaOffline } from "@/lib/fila-offline";
+import type { Canteiro, NovoRegistroManejo, TipoManejo } from "@/lib/types";
+import {
+  BotaoAvancar,
+  BotaoGrande,
+  LinhaResumo,
+  Passo,
+  PontosPasso,
+  TelaBase,
+} from "@/components/fluxo-registro";
+
+const TOTAL_PASSOS = 4;
+
+const filaOffline = criarFilaOffline<NovoRegistroManejo>(
+  "app-coletivo:fila-registros-manejo",
+);
+
+const TIPOS_MANEJO: { valor: TipoManejo; icone: string; rotulo: string }[] = [
+  { valor: "capina_seletiva", icone: "🌾", rotulo: "Capina seletiva" },
+  { valor: "adubacao", icone: "🧪", rotulo: "Adubação" },
+  { valor: "poda", icone: "✂️", rotulo: "Poda" },
+  { valor: "raleamento", icone: "🍃", rotulo: "Raleamento" },
+  { valor: "outro", icone: "🔧", rotulo: "Outro" },
+];
+
+export default function ManejoPage() {
+  const [passo, setPasso] = useState(1);
+
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+  const [canteiros, setCanteiros] = useState<Canteiro[]>([]);
+
+  const [canteiroId, setCanteiroId] = useState<string | null>(null);
+  const [tipoManejo, setTipoManejo] = useState<TipoManejo | null>(null);
+  const [foto, setFoto] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [observacao, setObservacao] = useState("");
+
+  const [salvando, setSalvando] = useState(false);
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<"ok" | "offline" | null>(null);
+  const [pendentesOffline, setPendentesOffline] = useState(() => filaOffline.contar());
+
+  useEffect(() => {
+    let cancelado = false;
+    async function carregar() {
+      try {
+        const lista = await listarCanteiros();
+        if (!cancelado) setCanteiros(lista);
+      } catch {
+        if (!cancelado) {
+          setErroCarregamento(
+            "Não deu pra carregar os canteiros agora. Confira a internet e tente de novo.",
+          );
+        }
+      } finally {
+        if (!cancelado) setCarregando(false);
+      }
+    }
+    carregar();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    async function tentarEnviar() {
+      const { restantes } = await filaOffline.tentarEnviar(salvarRegistroManejo);
+      setPendentesOffline(restantes);
+    }
+    tentarEnviar();
+    window.addEventListener("online", tentarEnviar);
+    return () => window.removeEventListener("online", tentarEnviar);
+  }, []);
+
+  function irPara(novoPasso: number) {
+    setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
+  }
+
+  function selecionarFoto(arquivo: File | null) {
+    setFoto(arquivo);
+    setFotoPreview((antigo) => {
+      if (antigo) URL.revokeObjectURL(antigo);
+      return arquivo ? URL.createObjectURL(arquivo) : null;
+    });
+  }
+
+  async function salvar() {
+    if (!canteiroId || !tipoManejo) return;
+    setSalvando(true);
+    setErroSalvar(null);
+
+    let fotoUrl: string | null = null;
+    if (foto) {
+      try {
+        fotoUrl = await enviarFotoRegistro(foto, "manejo");
+      } catch {
+        // Sem internet ou bucket ainda não configurado: segue sem foto em
+        // vez de travar o registro inteiro nela (foto é opcional aqui).
+        fotoUrl = null;
+      }
+    }
+
+    const registro: NovoRegistroManejo = {
+      canteiro_id: canteiroId,
+      tipo_manejo: tipoManejo,
+      foto_url: fotoUrl,
+      observacao: observacao.trim() ? observacao.trim() : null,
+    };
+
+    try {
+      await salvarRegistroManejo(registro);
+      setResultado("ok");
+    } catch {
+      filaOffline.enfileirar(registro);
+      setPendentesOffline(filaOffline.contar());
+      setResultado("offline");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function recomecar() {
+    setPasso(1);
+    setCanteiroId(null);
+    setTipoManejo(null);
+    selecionarFoto(null);
+    setObservacao("");
+    setResultado(null);
+    setErroSalvar(null);
+  }
+
+  const canteiroSelecionado = canteiros.find((c) => c.id === canteiroId);
+  const tipoSelecionado = TIPOS_MANEJO.find((t) => t.valor === tipoManejo);
+
+  if (carregando) {
+    return (
+      <TelaBase titulo="Registrar manejo" icone="🌾" voltarHref="/patio/horta">
+        <p className="text-center text-sm text-zinc-600">Carregando canteiros…</p>
+      </TelaBase>
+    );
+  }
+
+  if (erroCarregamento) {
+    return (
+      <TelaBase titulo="Registrar manejo" icone="🌾" voltarHref="/patio/horta">
+        <p className="text-center text-sm text-red-700">{erroCarregamento}</p>
+      </TelaBase>
+    );
+  }
+
+  if (resultado) {
+    return (
+      <TelaBase titulo="Registrar manejo" icone="🌾" voltarHref="/patio/horta">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2e6b3e] text-2xl text-white">
+            {resultado === "ok" ? "✅" : "📶"}
+          </span>
+          <p className="text-base font-semibold text-zinc-900">
+            {resultado === "ok"
+              ? "Registro salvo!"
+              : "Sem internet agora — guardado no celular"}
+          </p>
+          <p className="max-w-xs text-sm text-zinc-600">
+            {resultado === "ok"
+              ? "Registro de manejo salvo com sucesso."
+              : "Assim que a conexão voltar, este registro é enviado sozinho. Não precisa fazer nada."}
+          </p>
+          <div className="mt-2 flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={recomecar}
+              className="rounded-full bg-[#2e6b3e] px-6 py-3 text-sm font-semibold text-white"
+            >
+              Registrar outro manejo
+            </button>
+            <Link
+              href="/patio/horta"
+              className="rounded-full border-2 border-[#2e6b3e] px-6 py-3 text-sm font-semibold text-[#2e6b3e]"
+            >
+              Voltar pra Horta
+            </Link>
+          </div>
+        </div>
+      </TelaBase>
+    );
+  }
+
+  return (
+    <TelaBase titulo="Registrar manejo" icone="🌾" voltarHref="/patio/horta">
+      <BarraContexto canteiro={canteiroSelecionado} tipo={tipoSelecionado?.rotulo ?? null} passo={passo} />
+      <PontosPasso passo={passo} total={TOTAL_PASSOS} />
+
+      {pendentesOffline > 0 && (
+        <p className="mb-3 rounded-lg border border-dashed border-zinc-400 bg-white px-3 py-2 text-center text-[11px] text-zinc-600">
+          📶 {pendentesOffline} registro(s) esperando internet pra enviar.
+        </p>
+      )}
+
+      {passo === 1 && (
+        <Passo titulo="Qual canteiro?">
+          <div className="grid grid-cols-2 gap-3">
+            {canteiros.map((c) => (
+              <BotaoGrande
+                key={c.id}
+                icone={iconeTipoCanteiro(c.tipo)}
+                rotulo={c.nome}
+                selecionado={c.id === canteiroId}
+                onClick={() => {
+                  setCanteiroId(c.id);
+                  irPara(2);
+                }}
+              />
+            ))}
+          </div>
+          {canteiros.length === 0 && (
+            <p className="text-center text-sm text-zinc-600">
+              Nenhum canteiro cadastrado ainda. Cadastre pelo menos um canteiro (Mais → Cadastro) pra continuar.
+            </p>
+          )}
+        </Passo>
+      )}
+
+      {passo === 2 && (
+        <Passo titulo="Que tipo de manejo foi feito?">
+          <div className="grid grid-cols-2 gap-3">
+            {TIPOS_MANEJO.map((t) => (
+              <BotaoGrande
+                key={t.valor}
+                icone={t.icone}
+                rotulo={t.rotulo}
+                selecionado={t.valor === tipoManejo}
+                onClick={() => {
+                  setTipoManejo(t.valor);
+                  irPara(3);
+                }}
+              />
+            ))}
+          </div>
+        </Passo>
+      )}
+
+      {passo === 3 && (
+        <Passo titulo="Foto e observação (opcionais)">
+          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
+            />
+            {fotoPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
+            ) : (
+              <span className="text-sm font-bold text-zinc-800">📷 Tirar foto</span>
+            )}
+          </label>
+
+          <textarea
+            value={observacao}
+            onChange={(e) => setObservacao(e.target.value)}
+            placeholder='Ex.: "capina em volta dos pés de couve"...'
+            className="mt-4 min-h-24 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
+          />
+
+          <BotaoAvancar onClick={() => irPara(4)} />
+        </Passo>
+      )}
+
+      {passo === 4 && (
+        <Passo titulo="Confere antes de salvar">
+          <div className="rounded-xl border-2 border-zinc-800 bg-white p-3 text-sm">
+            <LinhaResumo rotulo="Canteiro" valor={canteiroSelecionado?.nome ?? "—"} onEditar={() => irPara(1)} />
+            <LinhaResumo rotulo="Tipo de manejo" valor={tipoSelecionado?.rotulo ?? "—"} onEditar={() => irPara(2)} />
+            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(3)} />
+            <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(3)} ultima />
+          </div>
+
+          {erroSalvar && <p className="mt-3 text-center text-xs text-red-700">{erroSalvar}</p>}
+
+          <button
+            type="button"
+            disabled={salvando}
+            onClick={salvar}
+            className="mt-4 w-full rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-3 text-sm font-bold text-[#2e6b3e] disabled:opacity-60"
+          >
+            {salvando ? "Salvando…" : "✅ Salvar registro"}
+          </button>
+          <p className="mt-2 text-center text-[10px] text-zinc-500">
+            📶 Sem internet agora? Sem problema — fica guardado no celular e envia sozinho quando voltar o sinal.
+          </p>
+        </Passo>
+      )}
+
+      {passo > 1 && !resultado && (
+        <button
+          type="button"
+          onClick={() => irPara(passo - 1)}
+          className="mt-4 block w-full text-center text-xs text-zinc-500 underline"
+        >
+          voltar
+        </button>
+      )}
+    </TelaBase>
+  );
+}
+
+function BarraContexto({
+  canteiro,
+  tipo,
+  passo,
+}: {
+  canteiro?: Canteiro;
+  tipo: string | null;
+  passo: number;
+}) {
+  if (passo === 1) return null;
+  return (
+    <div className="mb-2 flex justify-between rounded-lg border border-zinc-300 bg-[#f1efe6] px-3 py-1 text-[11px] text-zinc-600">
+      <span>🌻 {canteiro?.nome ?? "—"}</span>
+      {tipo && <span>{tipo}</span>}
+    </div>
+  );
+}

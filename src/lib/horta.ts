@@ -5,7 +5,7 @@
 // específico da Horta.
 
 import { garantirSessaoAnonima, supabase } from "./supabase";
-import type { NovoRegistroColheita, TipoCanteiro } from "./types";
+import type { NovoRegistroColheita, NovoRegistroManejo, TipoCanteiro } from "./types";
 
 // Ícone por tipo de canteiro — mesma lógica do ícone por tipo de parceiro
 // em Registrar compostagem (loja vs. construtora), só que com mais opções
@@ -32,6 +32,23 @@ export async function salvarRegistroColheita(
   const { data: userData } = await supabase.auth.getUser();
 
   const { error } = await supabase.from("registros_colheita").insert({
+    ...registro,
+    registrado_por: userData.user?.id ?? null,
+  });
+
+  if (error) throw error;
+}
+
+// Salva um registro de manejo (capina seletiva, adubação, poda,
+// raleamento). Lança erro se não houver internet ou sessão autenticada —
+// quem chama decide o que fazer (ex.: fila offline).
+export async function salvarRegistroManejo(
+  registro: NovoRegistroManejo,
+): Promise<void> {
+  await garantirSessaoAnonima();
+  const { data: userData } = await supabase.auth.getUser();
+
+  const { error } = await supabase.from("registros_manejo").insert({
     ...registro,
     registrado_por: userData.user?.id ?? null,
   });

@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-// Hub do bloco Horta (ver wireframe, seção 1 e 2). Só "Registrar colheita"
-// tem tela real por trás por enquanto — cultivo (germinação→transplante),
-// manejo e perdas/aproveitamento seguem placeholder, mesmo padrão do hub
-// de Compostagem.
+// Hub do bloco Horta (ver wireframe, seção 1 e 2). "Registrar colheita" e
+// "Manejo" têm tela real por trás; cultivo (germinação→transplante) e
+// perdas/aproveitamento seguem placeholder, mesmo padrão do hub de
+// Compostagem.
 const ITENS = [
   { href: "/patio/horta/registrar-colheita", icone: "🧺", rotulo: "Registrar colheita", pronto: true },
   { href: "#", icone: "🌱", rotulo: "Cultivo", pronto: false },
-  { href: "#", icone: "🌾", rotulo: "Manejo", pronto: false },
+  { href: "/patio/horta/manejo", icone: "🌾", rotulo: "Manejo", pronto: true },
   { href: "#", icone: "📉", rotulo: "Perdas / aproveitamento", pronto: false },
 ];
 

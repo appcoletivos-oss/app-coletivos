@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
 
-// Hub do bloco Compostagem (ver wireframe, seção 1 e 2). Por enquanto só
-// "Registrar compostagem" e "Ver caixas" estão construídas de verdade —
-// as outras opções (adubo, análise sensorial, água/energia, bombonas do
-// lojista, relatório da loja) ainda são placeholder, uma de cada vez.
+// Hub do bloco Compostagem (ver wireframe, seção 1 e 2). "Registrar
+// compostagem", "Ver caixas", "Análise sensorial" e "Controle de
+// bombonas" estão construídas de verdade — as outras opções (adubo,
+// água/energia, relatório da loja) ainda são placeholder, uma de cada vez.
 const ITENS = [
   { href: "/patio/compostagem/registrar-alimentacao", icone: "📥", rotulo: "Registrar compostagem", pronto: true },
   { href: "/patio/compostagem/ver-caixas", icone: null, rotulo: "Ver caixas", pronto: true },
   { href: "#", icone: "🧪", rotulo: "Registrar adubo", pronto: false },
-  { href: "#", icone: "👃", rotulo: "Análise sensorial", pronto: false },
+  { href: "/patio/compostagem/analise-sensorial", icone: "👃", rotulo: "Análise sensorial", pronto: true },
   { href: "#", icone: "💧", rotulo: "Água e energia", pronto: false },
+  { href: "/patio/compostagem/bombonas", icone: "🛢️", rotulo: "Controle de bombonas", pronto: true },
 ];
 
 export default function CompostagemPage() {

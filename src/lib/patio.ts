@@ -7,6 +7,8 @@ import type {
   Caixa,
   Canteiro,
   NovoRegistroAlimentacao,
+  NovoRegistroAnaliseSensorial,
+  NovoRegistroBombona,
   Parceiro,
   RegistroAlimentacaoResumo,
   StatusCaixa,
@@ -147,6 +149,42 @@ export async function enviarFotoRegistro(
 
   if (error) throw error;
   return caminho;
+}
+
+// -----------------------------------------------------------------------------
+// Compostagem → Análise sensorial
+// -----------------------------------------------------------------------------
+
+// Salva um registro de análise sensorial (visão, olfato, tato — texto
+// livre). Lança erro se não houver internet ou sessão autenticada — quem
+// chama decide o que fazer (ex.: fila offline).
+export async function salvarRegistroAnaliseSensorial(
+  registro: NovoRegistroAnaliseSensorial,
+): Promise<void> {
+  await garantirSessaoAnonima();
+  const { data: userData } = await supabase.auth.getUser();
+
+  const { error } = await supabase.from("registros_analise_sensorial").insert({
+    ...registro,
+    registrado_por: userData.user?.id ?? null,
+  });
+
+  if (error) throw error;
+}
+
+// -----------------------------------------------------------------------------
+// Compostagem → Controle de bombonas
+// -----------------------------------------------------------------------------
+
+// Salva um registro de controle de bombona. `registrado_por` vem do
+// próprio formulário (texto livre digitado pela pessoa), não da sessão —
+// ver NovoRegistroBombona em types.ts e a migration 20260822180000.
+export async function salvarRegistroBombona(
+  registro: NovoRegistroBombona,
+): Promise<void> {
+  await garantirSessaoAnonima();
+  const { error } = await supabase.from("registros_bombonas").insert(registro);
+  if (error) throw error;
 }
 
 // -----------------------------------------------------------------------------
