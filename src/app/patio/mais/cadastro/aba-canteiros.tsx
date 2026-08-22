@@ -2,7 +2,7 @@
 
 // Cadastro → aba Canteiros. Mesmo padrão de Parceiros (memória
 // histórica: corrigir nome vs. encerrar e substituir) — só muda os
-// campos, porque um canteiro tem tipo (solo, bombona, galeria...) e
+// campos, porque um canteiro tem tipo (solo, bombona, galeia...) e
 // capacidade em texto livre, já que a unidade de medida muda por tipo.
 
 import { useEffect, useState } from "react";
@@ -17,7 +17,7 @@ import type { Canteiro, TipoCanteiro } from "@/lib/types";
 const TIPOS: { valor: TipoCanteiro; rotulo: string }[] = [
   { valor: "canteiro_solo", rotulo: "Canteiro no solo" },
   { valor: "bombona", rotulo: "Bombona" },
-  { valor: "galeria", rotulo: "Galeria" },
+  { valor: "galeia", rotulo: "Galeia" },
   { valor: "geodesica", rotulo: "Geodésica" },
   { valor: "outro", rotulo: "Outro" },
 ];

@@ -9,38 +9,48 @@
 //
 // Loja e caixa são carregadas do banco (tabelas `parceiros` e `caixas`),
 // não hardcoded — a equipe pode renomear ou trocar parceiros pela tela de
-// Cadastro (ainda não construída) sem precisar mexer em código.
+// Cadastro sem precisar mexer em código.
+//
+// Os pedaços de tela (TelaBase, Passo, Stepper etc.) vêm de
+// @/components/fluxo-registro — compartilhados com Registrar colheita
+// (Horta), pra não duplicar essa UI a cada fluxo novo.
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   enviarFotoRegistro,
   listarCaixas,
   listarParceirosAtivos,
+  rotuloStatusCaixa,
   salvarRegistroAlimentacao,
 } from "@/lib/patio";
-import {
-  contarFilaOffline,
-  enfileirarRegistroOffline,
-  tentarEnviarFilaOffline,
-} from "@/lib/fila-offline";
+import { criarFilaOffline } from "@/lib/fila-offline";
 import type { Caixa, NovoRegistroAlimentacao, Parceiro, TipoResiduo } from "@/lib/types";
 import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
+import {
+  BotaoAvancar,
+  BotaoGrande,
+  LinhaResumo,
+  Passo,
+  PontosPasso,
+  Stepper,
+  TelaBase,
+} from "@/components/fluxo-registro";
 
 const TOTAL_PASSOS = 6;
+
+// Mesma chave de antes — a fila genérica só trocou a forma de guardar,
+// não o formato salvo, então quem já tinha registros pendentes no
+// celular não perde nada nessa mudança.
+const filaOffline = criarFilaOffline<NovoRegistroAlimentacao>(
+  "app-coletivo:fila-registros-alimentacao",
+);
 
 const TIPOS_RESIDUO: { valor: TipoResiduo; icone: string; rotulo: string }[] = [
   { valor: "alimento", icone: "🍎", rotulo: "Alimento" },
   { valor: "poda_verde", icone: "🌿", rotulo: "Poda / verde" },
   { valor: "outro_organico", icone: "🥬", rotulo: "Outro orgânico" },
 ];
-
-function rotuloStatusCaixa(status: Caixa["status"]): string | null {
-  if (status === "nao_ativada") return "não ativada";
-  if (status === "nova") return "nova, aguardando";
-  if (status === "desativada") return "desativada";
-  return null;
-}
 
 export default function RegistrarAlimentacaoPage() {
   const [passo, setPasso] = useState(1);
@@ -67,7 +77,7 @@ export default function RegistrarAlimentacaoPage() {
   // preguiçoso do useState) — evita chamar setState direto dentro de um
   // efeito, que o eslint (react-hooks/set-state-in-effect) sinaliza como
   // risco de renderizações em cascata.
-  const [pendentesOffline, setPendentesOffline] = useState(() => contarFilaOffline());
+  const [pendentesOffline, setPendentesOffline] = useState(() => filaOffline.contar());
 
   // Carrega parceiros e caixas ao abrir a tela.
   useEffect(() => {
@@ -101,7 +111,7 @@ export default function RegistrarAlimentacaoPage() {
   // e de novo sempre que a conexão voltar.
   useEffect(() => {
     async function tentarEnviar() {
-      const { restantes } = await tentarEnviarFilaOffline(salvarRegistroAlimentacao);
+      const { restantes } = await filaOffline.tentarEnviar(salvarRegistroAlimentacao);
       setPendentesOffline(restantes);
     }
     tentarEnviar();
@@ -151,8 +161,8 @@ export default function RegistrarAlimentacaoPage() {
       await salvarRegistroAlimentacao(registro);
       setResultado("ok");
     } catch {
-      enfileirarRegistroOffline(registro);
-      setPendentesOffline(contarFilaOffline());
+      filaOffline.enfileirar(registro);
+      setPendentesOffline(filaOffline.contar());
       setResultado("offline");
     } finally {
       setSalvando(false);
@@ -179,7 +189,7 @@ export default function RegistrarAlimentacaoPage() {
 
   if (carregando) {
     return (
-      <TelaBase titulo="Registrar compostagem">
+      <TelaBase titulo="Registrar compostagem" icone="🌱" voltarHref="/patio/compostagem">
         <p className="text-center text-sm text-zinc-600">Carregando lojas e caixas…</p>
       </TelaBase>
     );
@@ -187,7 +197,7 @@ export default function RegistrarAlimentacaoPage() {
 
   if (erroCarregamento) {
     return (
-      <TelaBase titulo="Registrar compostagem">
+      <TelaBase titulo="Registrar compostagem" icone="🌱" voltarHref="/patio/compostagem">
         <p className="text-center text-sm text-red-700">{erroCarregamento}</p>
       </TelaBase>
     );
@@ -195,7 +205,7 @@ export default function RegistrarAlimentacaoPage() {
 
   if (resultado) {
     return (
-      <TelaBase titulo="Registrar compostagem">
+      <TelaBase titulo="Registrar compostagem" icone="🌱" voltarHref="/patio/compostagem">
         <div className="flex flex-col items-center gap-4 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2e6b3e] text-2xl text-white">
             {resultado === "ok" ? "✅" : "📶"}
@@ -231,7 +241,7 @@ export default function RegistrarAlimentacaoPage() {
   }
 
   return (
-    <TelaBase titulo="Registrar compostagem">
+    <TelaBase titulo="Registrar compostagem" icone="🌱" voltarHref="/patio/compostagem">
       <BarraContexto parceiro={parceiroSelecionado} caixa={caixaSelecionada} passo={passo} />
       <PontosPasso passo={passo} total={TOTAL_PASSOS} />
 
@@ -450,24 +460,6 @@ export default function RegistrarAlimentacaoPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Pedaços de tela reutilizados
-// ---------------------------------------------------------------------------
-
-function TelaBase({ titulo, children }: { titulo: string; children: ReactNode }) {
-  return (
-    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col px-4 py-6">
-      <div className="mb-4 flex items-center justify-between rounded-xl border-2 border-zinc-800 bg-white px-3 py-2">
-        <span className="text-sm font-bold text-zinc-900">🌱 {titulo}</span>
-        <Link href="/patio/compostagem" className="text-lg" aria-label="Fechar">
-          ✕
-        </Link>
-      </div>
-      {children}
-    </main>
-  );
-}
-
 function BarraContexto({
   parceiro,
   caixa,
@@ -486,134 +478,6 @@ function BarraContexto({
           <IconeCaixaDagua /> Caixa {caixa.numero}
         </span>
       )}
-    </div>
-  );
-}
-
-function PontosPasso({ passo, total }: { passo: number; total: number }) {
-  return (
-    <div className="mb-4 flex justify-center gap-1.5">
-      {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
-        <span
-          key={n}
-          className={`h-1.5 w-1.5 rounded-full ${n <= passo ? "bg-[#2e6b3e]" : "bg-zinc-300"}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Passo({ titulo, children }: { titulo: string; children: ReactNode }) {
-  return (
-    <div>
-      <h2 className="mb-3 text-center text-sm font-bold text-zinc-900">{titulo}</h2>
-      {children}
-    </div>
-  );
-}
-
-function BotaoGrande({
-  icone,
-  rotulo,
-  selecionado,
-  onClick,
-}: {
-  icone: string;
-  rotulo: string;
-  selecionado: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "rounded-xl border-2 py-4 text-center text-xs font-bold",
-        selecionado ? "border-[#2e6b3e] bg-[#eaf3ea] text-[#2e6b3e]" : "border-zinc-800 bg-white text-zinc-800",
-      ].join(" ")}
-    >
-      <span className="mb-1 block text-2xl">{icone}</span>
-      {rotulo}
-    </button>
-  );
-}
-
-function Stepper({
-  valor,
-  unidade,
-  passoIncremento,
-  minimo,
-  onMudar,
-}: {
-  valor: number;
-  unidade: string;
-  passoIncremento: number;
-  minimo: number;
-  onMudar: (novo: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-center gap-4 rounded-xl border-2 border-zinc-800 bg-[#f1efe6] py-4">
-      <button
-        type="button"
-        onClick={() => onMudar(Math.max(minimo, Number((valor - passoIncremento).toFixed(1))))}
-        className="h-9 w-9 rounded-lg border-2 border-zinc-800 bg-white text-lg font-bold"
-        aria-label="diminuir"
-      >
-        −
-      </button>
-      <span className="min-w-20 text-center text-2xl font-bold tabular-nums text-zinc-900">
-        {valor} {unidade}
-      </span>
-      <button
-        type="button"
-        onClick={() => onMudar(Number((valor + passoIncremento).toFixed(1)))}
-        className="h-9 w-9 rounded-lg border-2 border-zinc-800 bg-white text-lg font-bold"
-        aria-label="aumentar"
-      >
-        +
-      </button>
-    </div>
-  );
-}
-
-function BotaoAvancar({
-  onClick,
-  texto = "Continuar",
-  desabilitado = false,
-}: {
-  onClick: () => void;
-  texto?: string;
-  desabilitado?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={desabilitado}
-      onClick={onClick}
-      className="mt-4 w-full rounded-xl bg-[#2e6b3e] py-3 text-sm font-bold text-white disabled:opacity-40"
-    >
-      {texto}
-    </button>
-  );
-}
-
-function LinhaResumo({
-  rotulo,
-  valor,
-  onEditar,
-  ultima = false,
-}: {
-  rotulo: string;
-  valor: string;
-  onEditar: () => void;
-  ultima?: boolean;
-}) {
-  return (
-    <div className={`flex items-center justify-between py-1.5 ${ultima ? "" : "border-b border-dashed border-zinc-200"}`}>
-      <span className="text-xs text-zinc-500">{rotulo}</span>
-      <button type="button" onClick={onEditar} className="text-xs font-bold text-zinc-900">
-        {valor} <span aria-hidden="true">✏️</span>
-      </button>
     </div>
   );
 }

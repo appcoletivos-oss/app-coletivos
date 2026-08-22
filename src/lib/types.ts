@@ -33,7 +33,7 @@ export interface Caixa {
 export type TipoCanteiro =
   | "canteiro_solo"
   | "bombona"
-  | "galeria"
+  | "galeia"
   | "geodesica"
   | "outro";
 
@@ -88,6 +88,29 @@ export interface NovoRegistroAlimentacao {
   peso_kg: number;
   tipo_residuo: TipoResiduo;
   temperatura_c?: number | null;
+  foto_url?: string | null;
+  observacao?: string | null;
+}
+
+// Projeção mínima de registros_alimentacao usada pela tela Ver caixas pra
+// somar peso e achar a última alimentação de cada caixa (agregação
+// client-side — ver resumoAlimentacaoPorCaixa em lib/patio.ts).
+export interface RegistroAlimentacaoResumo {
+  caixa_id: string;
+  peso_kg: number;
+  registrado_em: string;
+}
+
+// Dados que a tela de Registrar colheita (Horta) precisa enviar pra
+// salvar um registro novo. `cultura` é texto livre por decisão de produto
+// (2026-08-22): a tela mostra um grid fixo com as espécies mais colhidas
+// historicamente + botão "Outra" pra digitar o nome — sem tabela própria
+// de culturas por trás, então não passa por padronização automática (ver
+// Registro Geral, seção 3).
+export interface NovoRegistroColheita {
+  canteiro_id: string;
+  cultura: string;
+  peso_kg: number;
   foto_url?: string | null;
   observacao?: string | null;
 }

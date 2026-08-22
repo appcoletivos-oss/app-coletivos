@@ -2,7 +2,7 @@
 // Mesmo padrão de src/lib/patio.ts: centraliza as chamadas ao Supabase
 // pra não espalhar `.from(...)` pelas telas.
 
-import { supabase } from "./supabase";
+import { garantirSessaoAnonima, supabase } from "./supabase";
 import type { ConvitePreCadastro, MembroEquipe, PapelEquipe } from "./types";
 
 // Convite válido por 7 dias — prazo suficiente pra coordenação repassar o
@@ -15,6 +15,7 @@ const DIAS_VALIDADE_CONVITE = 7;
 // padrão. Membros "inativo" (removidos) continuam no banco, mas somem
 // dessa lista, igual parceiros/canteiros desativados.
 export async function listarMembrosAtivos(): Promise<MembroEquipe[]> {
+  await garantirSessaoAnonima();
   const { data, error } = await supabase
     .from("membros_equipe")
     .select("*")
@@ -33,6 +34,7 @@ export async function criarMembro(dados: {
   papel: PapelEquipe;
   whatsapp: string;
 }): Promise<MembroEquipe> {
+  await garantirSessaoAnonima();
   const agora = new Date();
   const expira = new Date(agora.getTime() + DIAS_VALIDADE_CONVITE * 24 * 60 * 60 * 1000);
 
@@ -60,6 +62,7 @@ export async function atualizarContatoMembro(
   id: string,
   dados: { nome: string; papel: PapelEquipe; whatsapp: string },
 ): Promise<void> {
+  await garantirSessaoAnonima();
   const { error } = await supabase
     .from("membros_equipe")
     .update({
@@ -75,6 +78,7 @@ export async function atualizarContatoMembro(
 // Gera um novo link pra quem ainda não aceitou o convite (ex.: o antigo
 // expirou). Só se aplica a quem está com status "convidado".
 export async function reenviarConvite(id: string): Promise<void> {
+  await garantirSessaoAnonima();
   const agora = new Date();
   const expira = new Date(agora.getTime() + DIAS_VALIDADE_CONVITE * 24 * 60 * 60 * 1000);
 
@@ -95,6 +99,7 @@ export async function reenviarConvite(id: string): Promise<void> {
 // canteiros) — mantém rastreável quem registrou o quê enquanto era parte
 // da equipe, mesmo depois de sair.
 export async function desativarMembro(id: string): Promise<void> {
+  await garantirSessaoAnonima();
   const { error } = await supabase
     .from("membros_equipe")
     .update({
