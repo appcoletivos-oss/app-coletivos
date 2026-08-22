@@ -1,11 +1,12 @@
 import Link from "next/link";
 
 // Módulo 1 (Pátio de Compostagem). Os 6 blocos vêm do wireframe (estrutura
-// fechada, rodada 7) — "Compostagem" (Registrar alimentação) e "Mais"
-// (Cadastro) já têm tela real por trás; os outros ainda são placeholder.
+// fechada, rodada 7) — "Compostagem" (Registrar alimentação), "Horta"
+// (Registrar colheita) e "Mais" (Cadastro) já têm tela real por trás; os
+// outros ainda são placeholder.
 const BLOCOS = [
   { href: "/patio/compostagem", icone: "🌱", rotulo: "Compostagem", pronto: true },
-  { href: "#", icone: "🌻", rotulo: "Horta", pronto: false },
+  { href: "/patio/horta", icone: "🌻", rotulo: "Horta", pronto: true },
   { href: "#", icone: "⏰", rotulo: "Meu Ponto", pronto: false },
   { href: "#", icone: "📅", rotulo: "Agenda", pronto: false },
   { href: "#", icone: "📦", rotulo: "Venda", pronto: false },

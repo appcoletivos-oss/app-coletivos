@@ -1,23 +1,21 @@
 import Link from "next/link";
-import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
 
-// Hub do bloco Compostagem (ver wireframe, seção 1 e 2). Por enquanto só
-// "Registrar compostagem" e "Ver caixas" estão construídas de verdade —
-// as outras opções (adubo, análise sensorial, água/energia, bombonas do
-// lojista, relatório da loja) ainda são placeholder, uma de cada vez.
+// Hub do bloco Horta (ver wireframe, seção 1 e 2). Só "Registrar colheita"
+// tem tela real por trás por enquanto — cultivo (germinação→transplante),
+// manejo e perdas/aproveitamento seguem placeholder, mesmo padrão do hub
+// de Compostagem.
 const ITENS = [
-  { href: "/patio/compostagem/registrar-alimentacao", icone: "📥", rotulo: "Registrar compostagem", pronto: true },
-  { href: "/patio/compostagem/ver-caixas", icone: null, rotulo: "Ver caixas", pronto: true },
-  { href: "#", icone: "🧪", rotulo: "Registrar adubo", pronto: false },
-  { href: "#", icone: "👃", rotulo: "Análise sensorial", pronto: false },
-  { href: "#", icone: "💧", rotulo: "Água e energia", pronto: false },
+  { href: "/patio/horta/registrar-colheita", icone: "🧺", rotulo: "Registrar colheita", pronto: true },
+  { href: "#", icone: "🌱", rotulo: "Cultivo", pronto: false },
+  { href: "#", icone: "🌾", rotulo: "Manejo", pronto: false },
+  { href: "#", icone: "📉", rotulo: "Perdas / aproveitamento", pronto: false },
 ];
 
-export default function CompostagemPage() {
+export default function HortaPage() {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col px-4 py-6">
       <div className="mb-4 flex items-center justify-between rounded-xl border-2 border-zinc-800 bg-white px-3 py-2">
-        <span className="text-sm font-bold text-zinc-900">🌱 Compostagem</span>
+        <span className="text-sm font-bold text-zinc-900">🌻 Horta</span>
         <Link href="/patio" className="text-lg" aria-label="Voltar">
           ←
         </Link>
@@ -36,7 +34,7 @@ export default function CompostagemPage() {
                 : "pointer-events-none border-dashed border-zinc-300 text-zinc-400",
             ].join(" ")}
           >
-            <span className="mb-1 block text-2xl">{item.icone ?? <IconeCaixaDagua className="mx-auto" />}</span>
+            <span className="mb-1 block text-2xl">{item.icone}</span>
             {item.rotulo}
             {!item.pronto && <span className="mt-1 block text-[10px] font-normal">em breve</span>}
           </Link>
