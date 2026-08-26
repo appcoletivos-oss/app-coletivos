@@ -15,7 +15,8 @@
 // da equipe não escreve com muita segurança — é só sugestão, nunca uma
 // trava: a pessoa pode ignorar e salvar o texto como digitou.
 
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
 import {
   CULTURAS_COMUNS,
@@ -42,7 +43,14 @@ const filaOffline = criarFilaOffline<NovoRegistroColheita>(
   "app-coletivo:fila-registros-colheita",
 );
 
-export default function RegistrarColheitaPage() {
+// useSearchParams exige um limite de Suspense em volta (regra do Next.js
+// pra Client Components) — por isso o export default vira só um wrapper,
+// ver RegistrarColheitaPage no fim do arquivo.
+function RegistrarColheitaConteudo() {
+  // Preenchido quando a tela é aberta a partir de um link da Agenda
+  // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
+  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+
   const [passo, setPasso] = useState(1);
 
   const [carregando, setCarregando] = useState(true);
@@ -140,6 +148,7 @@ export default function RegistrarColheitaPage() {
       peso_kg: peso,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
+      evento_agenda_id: eventoAgendaId,
     };
 
     try {
@@ -411,6 +420,20 @@ export default function RegistrarColheitaPage() {
         </button>
       )}
     </TelaBase>
+  );
+}
+
+export default function RegistrarColheitaPage() {
+  return (
+    <Suspense
+      fallback={
+        <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
+          <p className="text-center text-sm text-zinc-600">Carregando…</p>
+        </TelaBase>
+      }
+    >
+      <RegistrarColheitaConteudo />
+    </Suspense>
   );
 }
 

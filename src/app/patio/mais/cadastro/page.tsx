@@ -14,15 +14,17 @@ import { useState } from "react";
 import { AbaCaixas } from "./aba-caixas";
 import { AbaCanteiros } from "./aba-canteiros";
 import { AbaEquipe } from "./aba-equipe";
+import { AbaLocalTrabalho } from "./aba-local-trabalho";
 import { AbaParceiros } from "./aba-parceiros";
 
-type Aba = "parceiros" | "canteiros" | "caixas" | "equipe";
+type Aba = "parceiros" | "canteiros" | "caixas" | "equipe" | "local";
 
 const ABAS: { valor: Aba; rotulo: string }[] = [
   { valor: "parceiros", rotulo: "Parceiros" },
   { valor: "canteiros", rotulo: "Canteiros" },
   { valor: "caixas", rotulo: "Caixas" },
   { valor: "equipe", rotulo: "Equipe" },
+  { valor: "local", rotulo: "Local de trabalho" },
 ];
 
 export default function CadastroPage() {
@@ -37,14 +39,14 @@ export default function CadastroPage() {
         </Link>
       </div>
 
-      <div className="mb-4 grid grid-cols-4 gap-1.5">
+      <div className="mb-4 flex flex-wrap gap-1.5">
         {ABAS.map((item) => (
           <button
             key={item.valor}
             type="button"
             onClick={() => setAba(item.valor)}
             className={[
-              "rounded-lg border-2 py-2 text-[11px] font-bold",
+              "rounded-lg border-2 px-2.5 py-2 text-[11px] font-bold",
               aba === item.valor
                 ? "border-[#2e6b3e] bg-[#eaf3ea] text-[#2e6b3e]"
                 : "border-zinc-300 bg-white text-zinc-600",
@@ -59,6 +61,7 @@ export default function CadastroPage() {
       {aba === "canteiros" && <AbaCanteiros />}
       {aba === "caixas" && <AbaCaixas />}
       {aba === "equipe" && <AbaEquipe />}
+      {aba === "local" && <AbaLocalTrabalho />}
     </main>
   );
 }

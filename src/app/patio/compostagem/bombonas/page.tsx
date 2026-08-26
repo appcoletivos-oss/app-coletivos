@@ -19,7 +19,8 @@
 // a membros_equipe — a pessoa digita o próprio nome no passo 6.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { listarParceirosAtivos, salvarRegistroBombona } from "@/lib/patio";
 import { criarFilaOffline } from "@/lib/fila-offline";
 import type { NovoRegistroBombona, Parceiro } from "@/lib/types";
@@ -53,7 +54,14 @@ function formatarDataBR(iso: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-export default function BombonasPage() {
+// useSearchParams exige um limite de Suspense em volta (regra do Next.js
+// pra Client Components) — por isso o export default vira só um wrapper,
+// ver BombonasPage no fim do arquivo.
+function BombonasConteudo() {
+  // Preenchido quando a tela é aberta a partir de um link da Agenda
+  // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
+  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+
   const [passo, setPasso] = useState(1);
 
   const [carregando, setCarregando] = useState(true);
@@ -147,6 +155,7 @@ export default function BombonasPage() {
       preenchida_corretamente: preenchidaCorretamente,
       observacao: observacao.trim() ? observacao.trim() : null,
       registrado_por: registradoPor.trim(),
+      evento_agenda_id: eventoAgendaId,
     };
 
     try {
@@ -452,6 +461,20 @@ function CampoSimNao({
         </button>
       </div>
     </div>
+  );
+}
+
+export default function BombonasPage() {
+  return (
+    <Suspense
+      fallback={
+        <TelaBase titulo="Controle de bombonas" icone="🛢️" voltarHref="/patio/compostagem">
+          <p className="text-center text-sm text-zinc-600">Carregando…</p>
+        </TelaBase>
+      }
+    >
+      <BombonasConteudo />
+    </Suspense>
   );
 }
 

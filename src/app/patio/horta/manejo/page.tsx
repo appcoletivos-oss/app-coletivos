@@ -13,7 +13,8 @@
 // registro, pra não duplicar essa UI a cada fluxo novo.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
 import { iconeTipoCanteiro, salvarRegistroManejo } from "@/lib/horta";
 import { criarFilaOffline } from "@/lib/fila-offline";
@@ -41,7 +42,14 @@ const TIPOS_MANEJO: { valor: TipoManejo; icone: string; rotulo: string }[] = [
   { valor: "outro", icone: "🔧", rotulo: "Outro" },
 ];
 
-export default function ManejoPage() {
+// useSearchParams exige um limite de Suspense em volta (regra do Next.js
+// pra Client Components) — por isso o export default vira só um wrapper,
+// ver ManejoPage no fim do arquivo.
+function ManejoConteudo() {
+  // Preenchido quando a tela é aberta a partir de um link da Agenda
+  // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
+  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+
   const [passo, setPasso] = useState(1);
 
   const [carregando, setCarregando] = useState(true);
@@ -124,6 +132,7 @@ export default function ManejoPage() {
       tipo_manejo: tipoManejo,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
+      evento_agenda_id: eventoAgendaId,
     };
 
     try {
@@ -322,6 +331,20 @@ export default function ManejoPage() {
         </button>
       )}
     </TelaBase>
+  );
+}
+
+export default function ManejoPage() {
+  return (
+    <Suspense
+      fallback={
+        <TelaBase titulo="Registrar manejo" icone="🌾" voltarHref="/patio/horta">
+          <p className="text-center text-sm text-zinc-600">Carregando…</p>
+        </TelaBase>
+      }
+    >
+      <ManejoConteudo />
+    </Suspense>
   );
 }
 

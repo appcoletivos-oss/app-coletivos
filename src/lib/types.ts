@@ -67,6 +67,11 @@ export interface MembroEquipe {
   user_id: string | null;
   vinculado_desde: string;
   vinculado_ate: string | null;
+  // Turnos de 3h/semana esperados no vínculo geral da pessoa — usado como
+  // "esperado" no cálculo de banco de horas (ver lib/ponto.ts). Editável
+  // livremente pela coordenação a qualquer momento, não é fixado na
+  // criação do cadastro (ver migration 20260826120000).
+  carga_semanal_turnos: number | null;
 }
 
 // Dados públicos mínimos que a tela de convite (/convite/[token]) recebe
@@ -90,6 +95,9 @@ export interface NovoRegistroAlimentacao {
   temperatura_c?: number | null;
   foto_url?: string | null;
   observacao?: string | null;
+  // Preenchido quando a tela é aberta a partir de um link da Agenda
+  // (evento tipo "atividade") — ver lib/agenda.ts e migration 20260826120000.
+  evento_agenda_id?: string | null;
 }
 
 // Projeção mínima de registros_alimentacao usada pela tela Ver caixas pra
@@ -113,6 +121,7 @@ export interface NovoRegistroColheita {
   peso_kg: number;
   foto_url?: string | null;
   observacao?: string | null;
+  evento_agenda_id?: string | null;
 }
 
 export type TipoManejo = "capina_seletiva" | "adubacao" | "poda" | "raleamento" | "outro";
@@ -124,6 +133,7 @@ export interface NovoRegistroManejo {
   tipo_manejo: TipoManejo;
   observacao?: string | null;
   foto_url?: string | null;
+  evento_agenda_id?: string | null;
 }
 
 // Dados que a tela de Compostagem → Análise sensorial precisa enviar pra
@@ -135,6 +145,7 @@ export interface NovoRegistroAnaliseSensorial {
   visao?: string | null;
   olfato?: string | null;
   tato?: string | null;
+  evento_agenda_id?: string | null;
 }
 
 // Dados que a tela de Compostagem → Controle de bombonas precisa enviar
@@ -154,4 +165,85 @@ export interface NovoRegistroBombona {
   preenchida_corretamente?: boolean | null;
   observacao?: string | null;
   registrado_por: string;
+  evento_agenda_id?: string | null;
+}
+
+// -----------------------------------------------------------------------------
+// Bloco Agenda + Meu Ponto
+//
+// Espelham as tabelas criadas em supabase/migrations/20260826100000_agenda.sql
+// e 20260826110000_pontos.sql — se o schema mudar, atualize aqui também.
+// -----------------------------------------------------------------------------
+
+export type TipoEventoAgenda =
+  | "atividade"
+  | "mutirao"
+  | "oficina"
+  | "visita"
+  | "turno_trabalho"
+  | "folga"
+  | "ferias";
+
+export type TurnoDia = "manha" | "tarde" | "dia_todo";
+
+// Um evento da Agenda: geral da equipe (membro_equipe_id null) ou escala
+// individual (turno_trabalho, folga, ferias — membro_equipe_id obrigatório
+// em regra de produto). Ver comentário no topo da migration 20260826100000.
+export interface EventoAgenda {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  tipo: TipoEventoAgenda;
+  data: string;
+  data_fim: string | null;
+  turno: TurnoDia | null;
+  membro_equipe_id: string | null;
+  criado_por: string | null;
+  criado_em: string;
+}
+
+export interface NovoEventoAgenda {
+  titulo: string;
+  descricao?: string | null;
+  tipo: TipoEventoAgenda;
+  data: string;
+  data_fim?: string | null;
+  turno?: TurnoDia | null;
+  membro_equipe_id?: string | null;
+}
+
+// Config do geofence usado por Meu Ponto — ver migration 20260826090000.
+export interface LocalTrabalho {
+  id: string;
+  nome: string;
+  latitude: number;
+  longitude: number;
+  raio_metros: number;
+  atualizado_em: string;
+}
+
+export type TipoPonto = "entrada" | "saida";
+
+// Um registro de entrada/saída — todo registro que existe já passou na
+// checagem de geofence no cliente (ver lib/ponto.ts e migration 20260826110000).
+export interface Ponto {
+  id: string;
+  membro_equipe_id: string;
+  tipo: TipoPonto;
+  horario: string;
+  latitude: number;
+  longitude: number;
+  distancia_metros: number;
+  observacao: string | null;
+  criado_em: string;
+}
+
+export interface NovoPonto {
+  membro_equipe_id: string;
+  tipo: TipoPonto;
+  horario: string;
+  latitude: number;
+  longitude: number;
+  distancia_metros: number;
+  observacao?: string | null;
 }

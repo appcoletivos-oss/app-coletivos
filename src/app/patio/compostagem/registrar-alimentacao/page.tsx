@@ -16,7 +16,8 @@
 // (Horta), pra não duplicar essa UI a cada fluxo novo.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import {
   enviarFotoRegistro,
   listarCaixas,
@@ -52,7 +53,14 @@ const TIPOS_RESIDUO: { valor: TipoResiduo; icone: string; rotulo: string }[] = [
   { valor: "outro_organico", icone: "🥬", rotulo: "Outro orgânico" },
 ];
 
-export default function RegistrarAlimentacaoPage() {
+// useSearchParams exige um limite de Suspense em volta (regra do Next.js
+// pra Client Components) — por isso o export default vira só um wrapper,
+// ver RegistrarAlimentacaoPage no fim do arquivo.
+function RegistrarAlimentacaoConteudo() {
+  // Preenchido quando a tela é aberta a partir de um link da Agenda
+  // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
+  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+
   const [passo, setPasso] = useState(1);
 
   const [carregando, setCarregando] = useState(true);
@@ -155,6 +163,7 @@ export default function RegistrarAlimentacaoPage() {
       temperatura_c: temperaturaAtiva ? temperatura : null,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
+      evento_agenda_id: eventoAgendaId,
     };
 
     try {
@@ -457,6 +466,20 @@ export default function RegistrarAlimentacaoPage() {
         </button>
       )}
     </TelaBase>
+  );
+}
+
+export default function RegistrarAlimentacaoPage() {
+  return (
+    <Suspense
+      fallback={
+        <TelaBase titulo="Registrar compostagem" icone="🌱" voltarHref="/patio/compostagem">
+          <p className="text-center text-sm text-zinc-600">Carregando…</p>
+        </TelaBase>
+      }
+    >
+      <RegistrarAlimentacaoConteudo />
+    </Suspense>
   );
 }
 

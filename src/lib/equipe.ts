@@ -75,6 +75,20 @@ export async function atualizarContatoMembro(
   if (error) throw error;
 }
 
+// Ajusta a carga semanal (turnos de 3h/semana esperados) usada no cálculo
+// de banco de horas de Meu Ponto — editável a qualquer momento pela
+// coordenação, não é um valor fixado na criação do cadastro (ver migration
+// 20260826120000 e lib/ponto.ts, calcularBancoDeHoras).
+export async function atualizarCargaSemanal(id: string, cargaSemanalTurnos: number | null): Promise<void> {
+  await garantirSessaoAnonima();
+  const { error } = await supabase
+    .from("membros_equipe")
+    .update({ carga_semanal_turnos: cargaSemanalTurnos })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
 // Gera um novo link pra quem ainda não aceitou o convite (ex.: o antigo
 // expirou). Só se aplica a quem está com status "convidado".
 export async function reenviarConvite(id: string): Promise<void> {

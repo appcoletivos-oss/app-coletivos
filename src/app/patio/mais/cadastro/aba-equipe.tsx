@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  atualizarCargaSemanal,
   atualizarContatoMembro,
   criarMembro,
   desativarMembro,
@@ -183,6 +184,14 @@ export function AbaEquipe() {
                   </div>
                 )}
 
+                <CargaSemanal
+                  membro={m}
+                  onSalvar={async (carga) => {
+                    await atualizarCargaSemanal(m.id, carga);
+                    await carregar();
+                  }}
+                />
+
                 {removendoId === m.id ? (
                   <div className="mt-2 rounded-lg border-2 border-red-300 bg-red-50 p-2">
                     <p className="mb-2 text-[11px] text-red-800">
@@ -235,6 +244,53 @@ export function AbaEquipe() {
           <p className="text-center text-xs text-zinc-500">Nenhum membro cadastrado ainda.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// Turnos de 3h/semana esperados no vínculo geral da pessoa — usado como
+// "esperado" no banco de horas de Meu Ponto (ver lib/ponto.ts). Editor
+// separado do FormMembro (contato) porque é ajustado com frequência
+// diferente, sem entrar no fluxo de convite.
+function CargaSemanal({
+  membro,
+  onSalvar,
+}: {
+  membro: MembroEquipe;
+  onSalvar: (carga: number | null) => Promise<void>;
+}) {
+  const [valor, setValor] = useState(membro.carga_semanal_turnos ?? "");
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await onSalvar(valor === "" ? null : Number(valor));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-[11px] text-zinc-600">
+      <span>Carga semanal:</span>
+      <input
+        type="number"
+        min={0}
+        value={valor}
+        onChange={(e) => setValor(e.target.value === "" ? "" : Number(e.target.value))}
+        placeholder="turnos/semana"
+        className="w-20 rounded-lg border-2 border-zinc-300 p-1 text-center text-xs"
+      />
+      <span>turno(s) de 3h/semana</span>
+      <button
+        type="button"
+        disabled={salvando}
+        onClick={salvar}
+        className="ml-auto rounded-full border-2 border-zinc-300 px-2 py-0.5 text-[10px] font-bold text-zinc-700 disabled:opacity-40"
+      >
+        {salvando ? "…" : "salvar"}
+      </button>
     </div>
   );
 }

@@ -14,7 +14,8 @@
 // melhoria futura possível, não descartada.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { listarCaixas, rotuloStatusCaixa, salvarRegistroAnaliseSensorial } from "@/lib/patio";
 import { criarFilaOffline } from "@/lib/fila-offline";
 import type { Caixa, NovoRegistroAnaliseSensorial } from "@/lib/types";
@@ -33,7 +34,14 @@ const filaOffline = criarFilaOffline<NovoRegistroAnaliseSensorial>(
   "app-coletivo:fila-registros-analise-sensorial",
 );
 
-export default function AnaliseSensorialPage() {
+// useSearchParams exige um limite de Suspense em volta (regra do Next.js
+// pra Client Components) — por isso o export default vira só um wrapper,
+// ver AnaliseSensorialPage no fim do arquivo.
+function AnaliseSensorialConteudo() {
+  // Preenchido quando a tela é aberta a partir de um link da Agenda
+  // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
+  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+
   const [passo, setPasso] = useState(1);
 
   const [carregando, setCarregando] = useState(true);
@@ -96,6 +104,7 @@ export default function AnaliseSensorialPage() {
       visao: visao.trim() ? visao.trim() : null,
       olfato: olfato.trim() ? olfato.trim() : null,
       tato: tato.trim() ? tato.trim() : null,
+      evento_agenda_id: eventoAgendaId,
     };
 
     try {
@@ -332,6 +341,20 @@ export default function AnaliseSensorialPage() {
         </button>
       )}
     </TelaBase>
+  );
+}
+
+export default function AnaliseSensorialPage() {
+  return (
+    <Suspense
+      fallback={
+        <TelaBase titulo="Análise sensorial" icone="👃" voltarHref="/patio/compostagem">
+          <p className="text-center text-sm text-zinc-600">Carregando…</p>
+        </TelaBase>
+      }
+    >
+      <AnaliseSensorialConteudo />
+    </Suspense>
   );
 }
 

@@ -7,8 +7,8 @@ import Link from "next/link";
 const BLOCOS = [
   { href: "/patio/compostagem", icone: "🌱", rotulo: "Compostagem", pronto: true },
   { href: "/patio/horta", icone: "🌻", rotulo: "Horta", pronto: true },
-  { href: "#", icone: "⏰", rotulo: "Meu Ponto", pronto: false },
-  { href: "#", icone: "📅", rotulo: "Agenda", pronto: false },
+  { href: "/patio/meu-ponto", icone: "⏰", rotulo: "Meu Ponto", pronto: true },
+  { href: "/patio/agenda", icone: "📅", rotulo: "Agenda", pronto: true },
   { href: "#", icone: "📦", rotulo: "Venda", pronto: false },
   { href: "/patio/mais", icone: "⚙️", rotulo: "Mais", pronto: true },
 ];
