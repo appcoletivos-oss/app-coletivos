@@ -4,7 +4,8 @@
 // pela aba Canteiros do Cadastro) — este arquivo cuida só do que é
 // específico da Horta.
 
-import { garantirSessaoAnonima, supabase } from "./supabase";
+import { supabase } from "./supabase";
+import { requerSessao } from "./auth";
 import type { NovoRegistroColheita, NovoRegistroManejo, TipoCanteiro } from "./types";
 
 // Ícone por tipo de canteiro — mesma lógica do ícone por tipo de parceiro
@@ -25,34 +26,25 @@ export function iconeTipoCanteiro(tipo: TipoCanteiro): string {
 
 // Salva um registro de colheita. Lança erro se não houver internet ou
 // sessão autenticada — quem chama decide o que fazer (ex.: fila offline).
+// `registrado_por` é preenchido pelo banco (default auth.uid(), ver
+// migration 20260827120000).
 export async function salvarRegistroColheita(
   registro: NovoRegistroColheita,
 ): Promise<void> {
-  await garantirSessaoAnonima();
-  const { data: userData } = await supabase.auth.getUser();
-
-  const { error } = await supabase.from("registros_colheita").insert({
-    ...registro,
-    registrado_por: userData.user?.id ?? null,
-  });
-
+  await requerSessao();
+  const { error } = await supabase.from("registros_colheita").insert(registro);
   if (error) throw error;
 }
 
 // Salva um registro de manejo (capina seletiva, adubação, poda,
 // raleamento). Lança erro se não houver internet ou sessão autenticada —
-// quem chama decide o que fazer (ex.: fila offline).
+// quem chama decide o que fazer (ex.: fila offline). `registrado_por` vem
+// do banco (default auth.uid()).
 export async function salvarRegistroManejo(
   registro: NovoRegistroManejo,
 ): Promise<void> {
-  await garantirSessaoAnonima();
-  const { data: userData } = await supabase.auth.getUser();
-
-  const { error } = await supabase.from("registros_manejo").insert({
-    ...registro,
-    registrado_por: userData.user?.id ?? null,
-  });
-
+  await requerSessao();
+  const { error } = await supabase.from("registros_manejo").insert(registro);
   if (error) throw error;
 }
 

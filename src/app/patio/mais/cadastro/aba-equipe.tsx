@@ -19,8 +19,9 @@ import {
 import type { MembroEquipe, PapelEquipe } from "@/lib/types";
 
 const PAPEIS: { valor: PapelEquipe; rotulo: string }[] = [
-  { valor: "funcionaria", rotulo: "Funcionária" },
+  { valor: "equipe", rotulo: "Equipe" },
   { valor: "coordenacao", rotulo: "Coordenação" },
+  { valor: "consultor", rotulo: "Consultoria" },
 ];
 
 function rotuloPapel(papel: PapelEquipe): string {
@@ -140,7 +141,7 @@ export function AbaEquipe() {
                   <div>
                     <p className="text-sm font-bold text-zinc-900">{m.nome}</p>
                     <p className="text-[11px] text-zinc-500">
-                      {rotuloPapel(m.papel)} · {m.status === "ativo" ? "ativo(a)" : "convite pendente"}
+                      {rotuloPapel(m.papel)} · {m.user_id ? "acesso concluído" : "convite pendente"}
                     </p>
                   </div>
                   <a
@@ -309,7 +310,7 @@ function FormMembro({
   onCancelar: () => void;
 }) {
   const [nome, setNome] = useState(valoresIniciais?.nome ?? "");
-  const [papel, setPapel] = useState<PapelEquipe>(valoresIniciais?.papel ?? "funcionaria");
+  const [papel, setPapel] = useState<PapelEquipe>(valoresIniciais?.papel ?? "equipe");
   const [whatsapp, setWhatsapp] = useState(valoresIniciais?.whatsapp ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);

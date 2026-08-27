@@ -49,10 +49,13 @@ export interface Canteiro {
   observacoes: string | null;
 }
 
-export type PapelEquipe = "funcionaria" | "coordenacao";
+// coordenacao e consultor têm o mesmo nível de acesso (ver matriz da
+// decisão de 2026-08-27); a diferença prática é que consultor não bate
+// ponto. Lojista fica para a Leva 2 — não existe como papel aqui.
+export type PapelEquipe = "coordenacao" | "equipe" | "consultor";
 export type StatusMembroEquipe = "convidado" | "ativo" | "inativo";
 
-// Membro da equipe (funcionária/coordenação). "Remover" pela tela de
+// Membro da equipe (coordenação/equipe/consultor). "Remover" pela tela de
 // Cadastro sempre desativa (status = "inativo"), nunca apaga a linha —
 // mesma lógica de memória histórica de parceiros/canteiros.
 export interface MembroEquipe {
@@ -64,6 +67,8 @@ export interface MembroEquipe {
   convite_token: string | null;
   convite_criado_em: string | null;
   convite_expira_em: string | null;
+  // auth.users(id) da pessoa — preenchido no aceite do convite (function
+  // aceitar_convite). Enquanto for null, o membro não concluiu o 1º acesso.
   user_id: string | null;
   vinculado_desde: string;
   vinculado_ate: string | null;

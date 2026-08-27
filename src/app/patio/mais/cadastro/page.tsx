@@ -10,7 +10,8 @@
 // `status` que já existia; Equipe soma isso ao fluxo de convite.
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { obterMeuMembro } from "@/lib/auth";
 import { AbaCaixas } from "./aba-caixas";
 import { AbaCanteiros } from "./aba-canteiros";
 import { AbaEquipe } from "./aba-equipe";
@@ -29,6 +30,50 @@ const ABAS: { valor: Aba; rotulo: string }[] = [
 
 export default function CadastroPage() {
   const [aba, setAba] = useState<Aba>("parceiros");
+  // Cadastro é restrito a coordenação/consultor (matriz da decisão de
+  // 2026-08-27). A RLS bloqueia a escrita de qualquer forma; aqui é só pra
+  // não abrir um formulário que vai falhar ao salvar.
+  const [acesso, setAcesso] = useState<"verificando" | "ok" | "negado">("verificando");
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const membro = await obterMeuMembro();
+        const gestor = membro?.papel === "coordenacao" || membro?.papel === "consultor";
+        if (!cancelado) setAcesso(gestor ? "ok" : "negado");
+      } catch {
+        if (!cancelado) setAcesso("ok"); // offline: deixa tentar, a RLS decide
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  if (acesso === "verificando") {
+    return (
+      <main className="mx-auto flex w-full max-w-sm flex-1 items-center justify-center px-4 py-6">
+        <p className="text-sm text-zinc-600">Carregando…</p>
+      </main>
+    );
+  }
+
+  if (acesso === "negado") {
+    return (
+      <main className="mx-auto flex w-full max-w-sm flex-1 flex-col px-4 py-6">
+        <div className="mb-4 flex items-center justify-between rounded-xl border-2 border-zinc-800 bg-white px-3 py-2">
+          <span className="text-sm font-bold text-zinc-900">📋 Cadastro</span>
+          <Link href="/patio/mais" className="text-lg" aria-label="Voltar">
+            ←
+          </Link>
+        </div>
+        <p className="rounded-lg border border-dashed border-zinc-400 bg-[#f1efe6] px-3 py-4 text-center text-xs text-zinc-600">
+          Esta tela é da coordenação.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col px-4 py-6">

@@ -2,7 +2,8 @@
 // Centralizam as chamadas ao Supabase pra não espalhar `.from(...)` pelas
 // telas — se o schema mudar, o ajuste fica só aqui.
 
-import { garantirSessaoAnonima, supabase } from "./supabase";
+import { supabase } from "./supabase";
+import { requerSessao } from "./auth";
 import type {
   Caixa,
   Canteiro,
@@ -34,7 +35,7 @@ export function rotuloStatusCaixa(status: StatusCaixa): string | null {
 // Parceiros desativados (turnover) não aparecem aqui, mas continuam
 // existindo pros registros antigos que já apontam pra eles.
 export async function listarParceirosAtivos(): Promise<Parceiro[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("parceiros")
     .select("*")
@@ -49,7 +50,7 @@ export async function listarParceirosAtivos(): Promise<Parceiro[]> {
 // desabilitadas, em vez de escondê-las, pra equipe ver o estado real do
 // pátio (ver wireframe, seção 6).
 export async function listarCaixas(): Promise<Caixa[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("caixas")
     .select("*")
@@ -66,7 +67,7 @@ export async function listarCaixas(): Promise<Caixa[]> {
 export async function listarRegistrosAlimentacaoResumo(): Promise<
   RegistroAlimentacaoResumo[]
 > {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("registros_alimentacao")
     .select("caixa_id, peso_kg, registrado_em");
@@ -111,18 +112,13 @@ export function resumoAlimentacaoPorCaixa(
 
 // Salva um registro de alimentação. Lança erro se não houver internet ou
 // se a sessão não estiver autenticada — quem chama decide o que fazer
-// (ex.: guardar na fila offline).
+// (ex.: guardar na fila offline). `registrado_por` é preenchido pelo banco
+// (default auth.uid(), ver migration 20260827120000).
 export async function salvarRegistroAlimentacao(
   registro: NovoRegistroAlimentacao,
 ): Promise<void> {
-  await garantirSessaoAnonima();
-  const { data: userData } = await supabase.auth.getUser();
-
-  const { error } = await supabase.from("registros_alimentacao").insert({
-    ...registro,
-    registrado_por: userData.user?.id ?? null,
-  });
-
+  await requerSessao();
+  const { error } = await supabase.from("registros_alimentacao").insert(registro);
   if (error) throw error;
 }
 
@@ -139,7 +135,7 @@ export async function enviarFotoRegistro(
   foto: File,
   pasta: string = "alimentacao",
 ): Promise<string> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const extensao = foto.name.split(".").pop() || "jpg";
   const caminho = `${pasta}/${crypto.randomUUID()}.${extensao}`;
 
@@ -157,18 +153,13 @@ export async function enviarFotoRegistro(
 
 // Salva um registro de análise sensorial (visão, olfato, tato — texto
 // livre). Lança erro se não houver internet ou sessão autenticada — quem
-// chama decide o que fazer (ex.: fila offline).
+// chama decide o que fazer (ex.: fila offline). `registrado_por` vem do
+// banco (default auth.uid()).
 export async function salvarRegistroAnaliseSensorial(
   registro: NovoRegistroAnaliseSensorial,
 ): Promise<void> {
-  await garantirSessaoAnonima();
-  const { data: userData } = await supabase.auth.getUser();
-
-  const { error } = await supabase.from("registros_analise_sensorial").insert({
-    ...registro,
-    registrado_por: userData.user?.id ?? null,
-  });
-
+  await requerSessao();
+  const { error } = await supabase.from("registros_analise_sensorial").insert(registro);
   if (error) throw error;
 }
 
@@ -182,7 +173,7 @@ export async function salvarRegistroAnaliseSensorial(
 export async function salvarRegistroBombona(
   registro: NovoRegistroBombona,
 ): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase.from("registros_bombonas").insert(registro);
   if (error) throw error;
 }
@@ -200,7 +191,7 @@ export async function criarParceiro(dados: {
   nome: string;
   tipo: TipoParceiro;
 }): Promise<Parceiro> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("parceiros")
     .insert({ nome: dados.nome.trim(), tipo: dados.tipo })
@@ -214,7 +205,7 @@ export async function criarParceiro(dados: {
 // Corrige o nome de um parceiro já cadastrado (ex.: "Loja 1" → nome
 // real). Não mexe em `ativo` nem em vínculo — é só um ajuste de texto.
 export async function renomearParceiro(id: string, nome: string): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("parceiros")
     .update({ nome: nome.trim() })
@@ -230,7 +221,7 @@ export async function encerrarESubstituirParceiro(
   idAntigo: string,
   novo: { nome: string; tipo: TipoParceiro },
 ): Promise<Parceiro> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const hoje = new Date().toISOString().slice(0, 10);
 
   const { error: erroEncerrar } = await supabase
@@ -243,7 +234,7 @@ export async function encerrarESubstituirParceiro(
 }
 
 export async function listarCanteiros(): Promise<Canteiro[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("canteiros")
     .select("*")
@@ -260,7 +251,7 @@ export async function criarCanteiro(dados: {
   area_m2?: number | null;
   capacidade_texto?: string | null;
 }): Promise<Canteiro> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("canteiros")
     .insert({
@@ -277,7 +268,7 @@ export async function criarCanteiro(dados: {
 }
 
 export async function renomearCanteiro(id: string, nome: string): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("canteiros")
     .update({ nome: nome.trim() })
@@ -290,7 +281,7 @@ export async function encerrarESubstituirCanteiro(
   idAntigo: string,
   novo: { nome: string; tipo: TipoCanteiro; area_m2?: number | null; capacidade_texto?: string | null },
 ): Promise<Canteiro> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const hoje = new Date().toISOString().slice(0, 10);
 
   const { error: erroEncerrar } = await supabase
@@ -324,7 +315,7 @@ export async function criarCaixa(dados: {
   capacidade_kg: number;
   observacoes?: string | null;
 }): Promise<Caixa> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("caixas")
     .insert({
@@ -344,7 +335,7 @@ export async function atualizarCaixa(
   id: string,
   dados: { status: StatusCaixa; capacidade_kg: number; observacoes?: string | null },
 ): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("caixas")
     .update({
@@ -360,7 +351,7 @@ export async function atualizarCaixa(
 // "Retirar" uma caixa com defeito = marcar desativada, nunca apagar a
 // linha — registros_alimentacao antigos continuam apontando pra ela.
 export async function desativarCaixa(id: string): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("caixas")
     .update({ status: "desativada" as StatusCaixa })

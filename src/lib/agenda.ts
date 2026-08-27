@@ -1,7 +1,8 @@
 // Funções de acesso a dados do bloco Agenda. Mesmo padrão de patio.ts/horta.ts:
 // centraliza as chamadas ao Supabase pra não espalhar `.from(...)` pelas telas.
 
-import { garantirSessaoAnonima, supabase } from "./supabase";
+import { supabase } from "./supabase";
+import { requerSessao } from "./auth";
 import type { EventoAgenda, NovoEventoAgenda, TipoEventoAgenda, TurnoDia } from "./types";
 
 export const TIPOS_EVENTO_AGENDA: { valor: TipoEventoAgenda; icone: string; rotulo: string }[] = [
@@ -65,7 +66,7 @@ export function linkComEvento(href: string, eventoId: string): string {
 // de Agenda agrupa por dia no cliente. Volume ainda pequeno (fase piloto),
 // sem paginação por enquanto.
 export async function listarEventos(): Promise<EventoAgenda[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("eventos_agenda")
     .select("*")
@@ -75,12 +76,12 @@ export async function listarEventos(): Promise<EventoAgenda[]> {
   return data ?? [];
 }
 
-// criado_por referencia membros_equipe, não auth.users diretamente — sem
-// login de verdade implementado ainda, não há como resolver o membro a
-// partir da sessão anônima, então fica null por enquanto (mesma pendência
-// de controle de acesso das demais telas).
+// criado_por referencia membros_equipe(id) e é preenchido pelo banco no
+// INSERT (trigger set_criado_por_evento_agenda -> meu_membro_id(), ver
+// migration 20260827120000). Criar evento é restrito a coordenação/
+// consultor pela RLS.
 export async function criarEvento(dados: NovoEventoAgenda): Promise<EventoAgenda> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("eventos_agenda")
     .insert({
@@ -91,7 +92,6 @@ export async function criarEvento(dados: NovoEventoAgenda): Promise<EventoAgenda
       data_fim: dados.data_fim || null,
       turno: dados.turno || null,
       membro_equipe_id: dados.membro_equipe_id || null,
-      criado_por: null,
     })
     .select("*")
     .single();
@@ -101,7 +101,7 @@ export async function criarEvento(dados: NovoEventoAgenda): Promise<EventoAgenda
 }
 
 export async function removerEvento(id: string): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase.from("eventos_agenda").delete().eq("id", id);
   if (error) throw error;
 }

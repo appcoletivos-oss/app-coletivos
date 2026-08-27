@@ -31,6 +31,7 @@ import {
   rotuloTurno,
 } from "@/lib/agenda";
 import { listarMembrosAtivos } from "@/lib/equipe";
+import { obterMeuMembro } from "@/lib/auth";
 import type { EventoAgenda, MembroEquipe, NovoEventoAgenda, TipoEventoAgenda, TurnoDia } from "@/lib/types";
 import { TelaBase } from "@/components/fluxo-registro";
 
@@ -41,6 +42,10 @@ export default function AgendaPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [eventos, setEventos] = useState<EventoAgenda[]>([]);
   const [membros, setMembros] = useState<MembroEquipe[]>([]);
+  // Criar/editar/excluir evento (qualquer tipo, inclusive turno) é restrito
+  // a coordenação e consultor — a RLS bloqueia de qualquer forma; aqui é só
+  // pra não mostrar botão que vai falhar (ver matriz da decisão 2026-08-27).
+  const [podeEditar, setPodeEditar] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [formAberto, setFormAberto] = useState(false);
   const [removendoId, setRemovendoId] = useState<string | null>(null);
@@ -50,12 +55,14 @@ export default function AgendaPage() {
     setCarregando(true);
     setErro(null);
     try {
-      const [listaEventos, listaMembros] = await Promise.all([
+      const [listaEventos, listaMembros, meuMembro] = await Promise.all([
         listarEventos(),
         listarMembrosAtivos(),
+        obterMeuMembro(),
       ]);
       setEventos(listaEventos);
       setMembros(listaMembros);
+      setPodeEditar(meuMembro?.papel === "coordenacao" || meuMembro?.papel === "consultor");
     } catch {
       setErro("Não deu pra carregar a agenda agora. Confira a internet e tente de novo.");
     } finally {
@@ -101,27 +108,28 @@ export default function AgendaPage() {
             ))}
           </div>
 
-          {!formAberto ? (
-            <button
-              type="button"
-              onClick={() => setFormAberto(true)}
-              className="mb-3 w-full rounded-xl border-2 border-dashed border-[#2e6b3e] py-2.5 text-xs font-bold text-[#2e6b3e]"
-            >
-              + Novo evento
-            </button>
-          ) : (
-            <div className="mb-3">
-              <FormEvento
-                membros={membros}
-                onCancelar={() => setFormAberto(false)}
-                onSalvar={async (dados) => {
-                  await criarEvento(dados);
-                  setFormAberto(false);
-                  await carregar();
-                }}
-              />
-            </div>
-          )}
+          {podeEditar &&
+            (!formAberto ? (
+              <button
+                type="button"
+                onClick={() => setFormAberto(true)}
+                className="mb-3 w-full rounded-xl border-2 border-dashed border-[#2e6b3e] py-2.5 text-xs font-bold text-[#2e6b3e]"
+              >
+                + Novo evento
+              </button>
+            ) : (
+              <div className="mb-3">
+                <FormEvento
+                  membros={membros}
+                  onCancelar={() => setFormAberto(false)}
+                  onSalvar={async (dados) => {
+                    await criarEvento(dados);
+                    setFormAberto(false);
+                    await carregar();
+                  }}
+                />
+              </div>
+            ))}
 
           <div className="flex flex-col gap-4">
             {dias.map((dia) => (
@@ -132,6 +140,7 @@ export default function AgendaPage() {
                     <CartaoEvento
                       key={evento.id}
                       evento={evento}
+                      podeEditar={podeEditar}
                       nomeMembro={nomeMembro(evento.membro_equipe_id)}
                       removendo={removendoId === evento.id}
                       erro={removendoId === evento.id ? erroRemover : null}
@@ -185,6 +194,7 @@ function ChipFiltro({ rotulo, ativo, onClick }: { rotulo: string; ativo: boolean
 
 function CartaoEvento({
   evento,
+  podeEditar,
   nomeMembro,
   removendo,
   erro,
@@ -193,6 +203,7 @@ function CartaoEvento({
   onConfirmarRemover,
 }: {
   evento: EventoAgenda;
+  podeEditar: boolean;
   nomeMembro: string | null;
   removendo: boolean;
   erro: string | null;
@@ -232,36 +243,37 @@ function CartaoEvento({
         </div>
       )}
 
-      {removendo ? (
-        <div className="mt-2 rounded-lg border-2 border-red-300 bg-red-50 p-2">
-          <p className="mb-2 text-[11px] text-red-800">Excluir este evento da agenda?</p>
-          {erro && <p className="mb-2 text-[11px] font-semibold text-red-800">{erro}</p>}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onConfirmarRemover}
-              className="flex-1 rounded-lg bg-red-700 py-1.5 text-[11px] font-bold text-white"
-            >
-              Confirmar exclusão
-            </button>
-            <button
-              type="button"
-              onClick={onCancelarRemover}
-              className="rounded-lg border-2 border-zinc-300 px-3 py-1.5 text-[11px] font-bold text-zinc-600"
-            >
-              Cancelar
-            </button>
+      {podeEditar &&
+        (removendo ? (
+          <div className="mt-2 rounded-lg border-2 border-red-300 bg-red-50 p-2">
+            <p className="mb-2 text-[11px] text-red-800">Excluir este evento da agenda?</p>
+            {erro && <p className="mb-2 text-[11px] font-semibold text-red-800">{erro}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onConfirmarRemover}
+                className="flex-1 rounded-lg bg-red-700 py-1.5 text-[11px] font-bold text-white"
+              >
+                Confirmar exclusão
+              </button>
+              <button
+                type="button"
+                onClick={onCancelarRemover}
+                className="rounded-lg border-2 border-zinc-300 px-3 py-1.5 text-[11px] font-bold text-zinc-600"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={onPedirRemover}
-          className="mt-2 text-[11px] font-bold text-red-700 underline"
-        >
-          excluir
-        </button>
-      )}
+        ) : (
+          <button
+            type="button"
+            onClick={onPedirRemover}
+            className="mt-2 text-[11px] font-bold text-red-700 underline"
+          >
+            excluir
+          </button>
+        ))}
     </div>
   );
 }

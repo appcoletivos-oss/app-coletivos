@@ -2,7 +2,8 @@
 // Mesmo padrão de src/lib/patio.ts: centraliza as chamadas ao Supabase
 // pra não espalhar `.from(...)` pelas telas.
 
-import { garantirSessaoAnonima, supabase } from "./supabase";
+import { supabase } from "./supabase";
+import { requerSessao } from "./auth";
 import type { ConvitePreCadastro, MembroEquipe, PapelEquipe } from "./types";
 
 // Convite válido por 7 dias — prazo suficiente pra coordenação repassar o
@@ -15,7 +16,7 @@ const DIAS_VALIDADE_CONVITE = 7;
 // padrão. Membros "inativo" (removidos) continuam no banco, mas somem
 // dessa lista, igual parceiros/canteiros desativados.
 export async function listarMembrosAtivos(): Promise<MembroEquipe[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("membros_equipe")
     .select("*")
@@ -34,7 +35,7 @@ export async function criarMembro(dados: {
   papel: PapelEquipe;
   whatsapp: string;
 }): Promise<MembroEquipe> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const agora = new Date();
   const expira = new Date(agora.getTime() + DIAS_VALIDADE_CONVITE * 24 * 60 * 60 * 1000);
 
@@ -62,7 +63,7 @@ export async function atualizarContatoMembro(
   id: string,
   dados: { nome: string; papel: PapelEquipe; whatsapp: string },
 ): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("membros_equipe")
     .update({
@@ -80,7 +81,7 @@ export async function atualizarContatoMembro(
 // coordenação, não é um valor fixado na criação do cadastro (ver migration
 // 20260826120000 e lib/ponto.ts, calcularBancoDeHoras).
 export async function atualizarCargaSemanal(id: string, cargaSemanalTurnos: number | null): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("membros_equipe")
     .update({ carga_semanal_turnos: cargaSemanalTurnos })
@@ -92,7 +93,7 @@ export async function atualizarCargaSemanal(id: string, cargaSemanalTurnos: numb
 // Gera um novo link pra quem ainda não aceitou o convite (ex.: o antigo
 // expirou). Só se aplica a quem está com status "convidado".
 export async function reenviarConvite(id: string): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const agora = new Date();
   const expira = new Date(agora.getTime() + DIAS_VALIDADE_CONVITE * 24 * 60 * 60 * 1000);
 
@@ -113,7 +114,7 @@ export async function reenviarConvite(id: string): Promise<void> {
 // canteiros) — mantém rastreável quem registrou o quê enquanto era parte
 // da equipe, mesmo depois de sair.
 export async function desativarMembro(id: string): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("membros_equipe")
     .update({

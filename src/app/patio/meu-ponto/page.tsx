@@ -8,15 +8,19 @@
 // sinal), o registro é bloqueado com uma mensagem clara — nunca um
 // fallback silencioso (decisão de produto, ver Registro Geral).
 //
-// Sem login implementado ainda, a tela usa um seletor de membro (persistido
-// no localStorage do aparelho pra não pedir de novo a cada visita) — mesma
-// pendência de controle de acesso das demais telas do app.
+// Desde a Leva 1 (2026-08-27) a pessoa é identificada pela sessão real (não
+// mais por um seletor "Quem é você?"). Por papel (ver matriz da decisão):
+//   - equipe:      bate o próprio ponto, vê a própria escala/banco de horas
+//                  (a RLS de `pontos` já esconde o de terceiros);
+//   - coordenação: bate o próprio ponto E vê o de todo mundo;
+//   - consultor:   não bate ponto, mas vê o de todo mundo.
 //
 // Escala da semana e banco de horas são calculados no cliente a partir de
 // eventos_agenda (turno_trabalho) e pontos — sem tabela própria de banco de
 // horas nesta versão (ver lib/ponto.ts, calcularBancoDeHoras).
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { obterMeuMembro } from "@/lib/auth";
 import { listarMembrosAtivos } from "@/lib/equipe";
 import {
   buscarLocalTrabalho,
@@ -34,41 +38,71 @@ import { criarFilaOffline } from "@/lib/fila-offline";
 import type { EventoAgenda, LocalTrabalho, MembroEquipe, NovoPonto, TipoPonto } from "@/lib/types";
 import { TelaBase } from "@/components/fluxo-registro";
 
-const CHAVE_MEMBRO_SELECIONADO = "app-coletivo:meu-ponto-membro-id";
-
 const filaOffline = criarFilaOffline<NovoPonto>("app-coletivo:fila-pontos");
 
 type ResultadoPonto = { tipo: TipoPonto; offline: boolean } | null;
 
+interface ResumoMembro {
+  membro: MembroEquipe;
+  turnos: EventoAgenda[];
+  banco: BancoDeHoras;
+}
+
 export default function MeuPontoPage() {
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
-  const [membros, setMembros] = useState<MembroEquipe[]>([]);
+  const [meuMembro, setMeuMembro] = useState<MembroEquipe | null>(null);
   const [localTrabalho, setLocalTrabalho] = useState<LocalTrabalho | null>(null);
-  const [membroId, setMembroId] = useState("");
 
-  const [turnosDaSemana, setTurnosDaSemana] = useState<EventoAgenda[]>([]);
-  const [banco, setBanco] = useState<BancoDeHoras | null>(null);
+  const [meuResumo, setMeuResumo] = useState<ResumoMembro | null>(null);
+  const [resumoEquipe, setResumoEquipe] = useState<ResumoMembro[]>([]);
 
   const [processando, setProcessando] = useState<TipoPonto | null>(null);
   const [erroPonto, setErroPonto] = useState<string | null>(null);
   const [resultadoPonto, setResultadoPonto] = useState<ResultadoPonto>(null);
   const [pendentesOffline, setPendentesOffline] = useState(() => filaOffline.contar());
 
+  const papel = meuMembro?.papel ?? null;
+  const podeBaterPonto = papel === "coordenacao" || papel === "equipe";
+  const podeVerTodos = papel === "coordenacao" || papel === "consultor";
+
+  const carregarResumoDe = useCallback(
+    async (membro: MembroEquipe): Promise<ResumoMembro> => {
+      const { inicio, fim } = limitesDaSemana(new Date());
+      const [turnos, pontos] = await Promise.all([
+        listarTurnosDaSemana(membro.id, inicio, fim),
+        listarPontosDaSemana(membro.id, inicio, fim),
+      ]);
+      return { membro, turnos, banco: calcularBancoDeHoras(turnos, pontos) };
+    },
+    [],
+  );
+
+  const recarregarResumos = useCallback(
+    async (membro: MembroEquipe, verTodos: boolean) => {
+      try {
+        setMeuResumo(await carregarResumoDe(membro));
+        if (verTodos) {
+          const membros = await listarMembrosAtivos();
+          setResumoEquipe(await Promise.all(membros.map((m) => carregarResumoDe(m))));
+        }
+      } catch {
+        // silencioso: a seção só não mostra o resumo. Bater ponto continua ok.
+      }
+    },
+    [carregarResumoDe],
+  );
+
   useEffect(() => {
     let cancelado = false;
     (async () => {
       try {
-        const [listaMembros, local] = await Promise.all([listarMembrosAtivos(), buscarLocalTrabalho()]);
+        const [membro, local] = await Promise.all([obterMeuMembro(), buscarLocalTrabalho()]);
         if (cancelado) return;
-        setMembros(listaMembros);
+        setMeuMembro(membro);
         setLocalTrabalho(local);
-
-        const salvo = window.localStorage.getItem(CHAVE_MEMBRO_SELECIONADO);
-        if (salvo && listaMembros.some((m) => m.id === salvo)) {
-          setMembroId(salvo);
-        } else if (listaMembros.length === 1) {
-          setMembroId(listaMembros[0].id);
+        if (membro) {
+          await recarregarResumos(membro, membro.papel === "coordenacao" || membro.papel === "consultor");
         }
       } catch {
         if (!cancelado) {
@@ -81,7 +115,7 @@ export default function MeuPontoPage() {
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [recarregarResumos]);
 
   useEffect(() => {
     async function tentarEnviar() {
@@ -93,42 +127,8 @@ export default function MeuPontoPage() {
     return () => window.removeEventListener("online", tentarEnviar);
   }, []);
 
-  // Não zera turnosDaSemana/banco sincronamente quando `id` está vazio —
-  // a exibição condiciona em `membroId` na renderização (ver JSX abaixo),
-  // então basta não buscar nada nesse caso. Zerar aqui dispararia
-  // setState direto no corpo do efeito (react-hooks/set-state-in-effect).
-  async function carregarSemana(id: string) {
-    if (!id) return;
-    const { inicio, fim } = limitesDaSemana(new Date());
-    try {
-      const [turnos, pontos] = await Promise.all([
-        listarTurnosDaSemana(id, inicio, fim),
-        listarPontosDaSemana(id, inicio, fim),
-      ]);
-      setTurnosDaSemana(turnos);
-      setBanco(calcularBancoDeHoras(turnos, pontos));
-    } catch {
-      setTurnosDaSemana([]);
-      setBanco(null);
-    }
-  }
-
-  useEffect(() => {
-    async function executar() {
-      await carregarSemana(membroId);
-    }
-    executar();
-  }, [membroId]);
-
-  function selecionarMembro(id: string) {
-    setMembroId(id);
-    setErroPonto(null);
-    setResultadoPonto(null);
-    window.localStorage.setItem(CHAVE_MEMBRO_SELECIONADO, id);
-  }
-
   async function baterPonto(tipo: TipoPonto) {
-    if (!membroId || !localTrabalho) return;
+    if (!meuMembro || !localTrabalho) return;
     setProcessando(tipo);
     setErroPonto(null);
     setResultadoPonto(null);
@@ -150,7 +150,7 @@ export default function MeuPontoPage() {
       }
 
       const registro: NovoPonto = {
-        membro_equipe_id: membroId,
+        membro_equipe_id: meuMembro.id,
         tipo,
         horario: new Date().toISOString(),
         latitude: coordenada.latitude,
@@ -161,7 +161,7 @@ export default function MeuPontoPage() {
       try {
         await salvarPonto(registro);
         setResultadoPonto({ tipo, offline: false });
-        await carregarSemana(membroId);
+        await recarregarResumos(meuMembro, podeVerTodos);
       } catch {
         filaOffline.enfileirar(registro);
         setPendentesOffline(filaOffline.contar());
@@ -196,106 +196,128 @@ export default function MeuPontoPage() {
 
   return (
     <TelaBase titulo="Meu Ponto" icone="⏰" voltarHref="/patio">
-      <label className="mb-4 block text-[11px] font-semibold text-zinc-600">
-        Quem é você?
-        <select
-          value={membroId}
-          onChange={(e) => selecionarMembro(e.target.value)}
-          className="mt-1 w-full rounded-lg border-2 border-zinc-300 bg-white p-2 text-sm"
-        >
-          <option value="">selecione seu nome</option>
-          {membros.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-
       {pendentesOffline > 0 && (
         <p className="mb-3 rounded-lg border border-dashed border-zinc-400 bg-white px-3 py-2 text-center text-[11px] text-zinc-600">
           📶 {pendentesOffline} ponto(s) esperando internet pra enviar.
         </p>
       )}
 
-      {!localTrabalho && (
-        <p className="mb-3 text-center text-xs text-red-700">
-          Local de trabalho ainda não configurado (Mais → Cadastro).
-        </p>
-      )}
+      {podeBaterPonto && (
+        <>
+          {!localTrabalho && (
+            <p className="mb-3 text-center text-xs text-red-700">
+              Local de trabalho ainda não configurado (Mais → Cadastro).
+            </p>
+          )}
 
-      <div className="mb-3 grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          disabled={!membroId || !localTrabalho || processando !== null}
-          onClick={() => baterPonto("entrada")}
-          className="rounded-xl bg-[#2e6b3e] py-4 text-sm font-bold text-white disabled:opacity-40"
-        >
-          {processando === "entrada" ? "Confirmando…" : "🟢 Bater entrada"}
-        </button>
-        <button
-          type="button"
-          disabled={!membroId || !localTrabalho || processando !== null}
-          onClick={() => baterPonto("saida")}
-          className="rounded-xl border-2 border-zinc-800 bg-white py-4 text-sm font-bold text-zinc-800 disabled:opacity-40"
-        >
-          {processando === "saida" ? "Confirmando…" : "🔴 Bater saída"}
-        </button>
-      </div>
-
-      {erroPonto && (
-        <p className="mb-3 rounded-lg border-2 border-red-300 bg-red-50 p-2 text-center text-xs text-red-800">
-          {erroPonto}
-        </p>
-      )}
-
-      {resultadoPonto && (
-        <p className="mb-3 rounded-lg border-2 border-[#2e6b3e] bg-[#eaf3ea] p-2 text-center text-xs text-[#2e6b3e]">
-          {resultadoPonto.offline
-            ? `${resultadoPonto.tipo === "entrada" ? "Entrada" : "Saída"} guardada no celular — envia sozinha quando a internet voltar.`
-            : `${resultadoPonto.tipo === "entrada" ? "Entrada" : "Saída"} registrada! ✅`}
-        </p>
-      )}
-
-      <div className="mb-3 rounded-xl border-2 border-zinc-800 bg-white p-3">
-        <p className="mb-2 text-xs font-bold text-zinc-800">Escala da semana</p>
-        {!membroId && <p className="text-[11px] text-zinc-500">Selecione seu nome pra ver a escala.</p>}
-        {membroId && turnosDaSemana.length === 0 && (
-          <p className="text-[11px] text-zinc-500">Nenhum turno de trabalho agendado pra esta semana.</p>
-        )}
-        {membroId && turnosDaSemana.map((turno) => (
-          <div key={turno.id} className="flex justify-between border-b border-dashed border-zinc-200 py-1 last:border-0">
-            <span className="text-xs text-zinc-700">{formatarDataBR(turno.data)}</span>
-            <span className="text-xs font-semibold text-zinc-900">{rotuloTurno(turno.turno)}</span>
+          <div className="mb-3 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={!localTrabalho || processando !== null}
+              onClick={() => baterPonto("entrada")}
+              className="rounded-xl bg-[#2e6b3e] py-4 text-sm font-bold text-white disabled:opacity-40"
+            >
+              {processando === "entrada" ? "Confirmando…" : "🟢 Bater entrada"}
+            </button>
+            <button
+              type="button"
+              disabled={!localTrabalho || processando !== null}
+              onClick={() => baterPonto("saida")}
+              className="rounded-xl border-2 border-zinc-800 bg-white py-4 text-sm font-bold text-zinc-800 disabled:opacity-40"
+            >
+              {processando === "saida" ? "Confirmando…" : "🔴 Bater saída"}
+            </button>
           </div>
-        ))}
-      </div>
 
-      <div className="rounded-xl border-2 border-zinc-800 bg-white p-3">
-        <p className="mb-2 text-xs font-bold text-zinc-800">Banco de horas (semana atual)</p>
-        {!banco || !membroId ? (
-          <p className="text-[11px] text-zinc-500">Selecione seu nome pra ver o resumo.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg bg-[#f1efe6] py-2">
-              <p className="text-sm font-bold text-zinc-900">{formatarHoras(banco.esperadoHoras)}</p>
-              <p className="text-[10px] text-zinc-500">esperado</p>
-            </div>
-            <div className="rounded-lg bg-[#f1efe6] py-2">
-              <p className="text-sm font-bold text-zinc-900">{formatarHoras(banco.realizadoHoras)}</p>
-              <p className="text-[10px] text-zinc-500">realizado</p>
-            </div>
-            <div className={`rounded-lg py-2 ${banco.saldoHoras >= 0 ? "bg-[#eaf3ea]" : "bg-red-50"}`}>
-              <p className={`text-sm font-bold ${banco.saldoHoras >= 0 ? "text-[#2e6b3e]" : "text-red-700"}`}>
-                {banco.saldoHoras >= 0 ? "+" : ""}
-                {formatarHoras(banco.saldoHoras)}
-              </p>
-              <p className="text-[10px] text-zinc-500">saldo</p>
-            </div>
-          </div>
-        )}
-      </div>
+          {erroPonto && (
+            <p className="mb-3 rounded-lg border-2 border-red-300 bg-red-50 p-2 text-center text-xs text-red-800">
+              {erroPonto}
+            </p>
+          )}
+
+          {resultadoPonto && (
+            <p className="mb-3 rounded-lg border-2 border-[#2e6b3e] bg-[#eaf3ea] p-2 text-center text-xs text-[#2e6b3e]">
+              {resultadoPonto.offline
+                ? `${resultadoPonto.tipo === "entrada" ? "Entrada" : "Saída"} guardada no celular — envia sozinha quando a internet voltar.`
+                : `${resultadoPonto.tipo === "entrada" ? "Entrada" : "Saída"} registrada! ✅`}
+            </p>
+          )}
+        </>
+      )}
+
+      {!podeBaterPonto && (
+        <p className="mb-3 rounded-lg border border-dashed border-zinc-400 bg-[#f1efe6] px-3 py-2 text-center text-[11px] text-zinc-600">
+          Consultoria não bate ponto — abaixo, o ponto da equipe.
+        </p>
+      )}
+
+      {podeVerTodos ? (
+        <div className="flex flex-col gap-3">
+          {resumoEquipe.length === 0 && (
+            <p className="text-center text-xs text-zinc-500">Nenhum membro ativo pra mostrar.</p>
+          )}
+          {resumoEquipe.map((r) => (
+            <CartaoResumo key={r.membro.id} resumo={r} titulo={r.membro.nome} />
+          ))}
+        </div>
+      ) : (
+        meuResumo && <CartaoResumo resumo={meuResumo} titulo="Sua semana" mostrarEscala />
+      )}
     </TelaBase>
+  );
+}
+
+function CartaoResumo({
+  resumo,
+  titulo,
+  mostrarEscala = false,
+}: {
+  resumo: ResumoMembro;
+  titulo: string;
+  mostrarEscala?: boolean;
+}) {
+  const { turnos, banco } = resumo;
+  return (
+    <div className="rounded-xl border-2 border-zinc-800 bg-white p-3">
+      <p className="mb-2 text-xs font-bold text-zinc-800">{titulo}</p>
+
+      {mostrarEscala && (
+        <div className="mb-3">
+          <p className="mb-1 text-[11px] font-semibold text-zinc-500">Escala da semana</p>
+          {turnos.length === 0 ? (
+            <p className="text-[11px] text-zinc-500">Nenhum turno agendado pra esta semana.</p>
+          ) : (
+            turnos.map((turno) => (
+              <div
+                key={turno.id}
+                className="flex justify-between border-b border-dashed border-zinc-200 py-1 last:border-0"
+              >
+                <span className="text-xs text-zinc-700">{formatarDataBR(turno.data)}</span>
+                <span className="text-xs font-semibold text-zinc-900">{rotuloTurno(turno.turno)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-lg bg-[#f1efe6] py-2">
+          <p className="text-sm font-bold text-zinc-900">{formatarHoras(banco.esperadoHoras)}</p>
+          <p className="text-[10px] text-zinc-500">esperado</p>
+        </div>
+        <div className="rounded-lg bg-[#f1efe6] py-2">
+          <p className="text-sm font-bold text-zinc-900">{formatarHoras(banco.realizadoHoras)}</p>
+          <p className="text-[10px] text-zinc-500">realizado</p>
+        </div>
+        <div className={`rounded-lg py-2 ${banco.saldoHoras >= 0 ? "bg-[#eaf3ea]" : "bg-red-50"}`}>
+          <p className={`text-sm font-bold ${banco.saldoHoras >= 0 ? "text-[#2e6b3e]" : "text-red-700"}`}>
+            {banco.saldoHoras >= 0 ? "+" : ""}
+            {formatarHoras(banco.saldoHoras)}
+          </p>
+          <p className="text-[10px] text-zinc-500">saldo</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

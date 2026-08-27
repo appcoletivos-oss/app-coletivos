@@ -3,7 +3,8 @@
 // de banco de horas (derivado — sem tabela própria, ver Registro Geral).
 // Mesmo padrão de patio.ts/horta.ts: centraliza as chamadas ao Supabase.
 
-import { garantirSessaoAnonima, supabase } from "./supabase";
+import { supabase } from "./supabase";
+import { requerSessao } from "./auth";
 import type { EventoAgenda, LocalTrabalho, NovoPonto, Ponto } from "./types";
 
 // -----------------------------------------------------------------------------
@@ -11,7 +12,7 @@ import type { EventoAgenda, LocalTrabalho, NovoPonto, Ponto } from "./types";
 // -----------------------------------------------------------------------------
 
 export async function buscarLocalTrabalho(): Promise<LocalTrabalho | null> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("local_trabalho")
     .select("*")
@@ -26,7 +27,7 @@ export async function atualizarLocalTrabalho(
   id: string,
   dados: { nome: string; latitude: number; longitude: number; raio_metros: number },
 ): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase
     .from("local_trabalho")
     .update({
@@ -103,7 +104,7 @@ export function obterLocalizacaoAtual(): Promise<CoordenadaAtual> {
 // -----------------------------------------------------------------------------
 
 export async function salvarPonto(registro: NovoPonto): Promise<void> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { error } = await supabase.from("pontos").insert(registro);
   if (error) throw error;
 }
@@ -113,7 +114,7 @@ export async function listarPontosDaSemana(
   inicioSemanaISO: string,
   fimSemanaISO: string,
 ): Promise<Ponto[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("pontos")
     .select("*")
@@ -131,7 +132,7 @@ export async function listarTurnosDaSemana(
   inicioSemanaISO: string,
   fimSemanaISO: string,
 ): Promise<EventoAgenda[]> {
-  await garantirSessaoAnonima();
+  await requerSessao();
   const { data, error } = await supabase
     .from("eventos_agenda")
     .select("*")
