@@ -24,11 +24,11 @@ type Item = {
 
 const ITENS: Item[] = [
   { href: "/patio/mais/cadastro", icone: "📋", rotulo: "Cadastro", pronto: true },
-  { href: "#", icone: "📣", rotulo: "Avisos ao shopping", pronto: false },
-  { href: "#", icone: "💰", rotulo: "Financeiro", pronto: false },
+  { href: "/patio/mais/avisos-shopping", icone: "📣", rotulo: "Avisos ao shopping", pronto: true },
+  { href: "/patio/mais/financeiro", icone: "💰", rotulo: "Financeiro", pronto: true },
   { href: "#", icone: "📊", rotulo: "Relatórios ESG/ODS", pronto: false },
-  { href: "#", icone: "🖼️", rotulo: "Arquivo de fotos", pronto: false },
-  { href: "#", icone: "⚠️", rotulo: "Ocorrência atípica", pronto: false, abertoAEquipe: true },
+  { href: "/patio/mais/galeria", icone: "🖼️", rotulo: "Arquivo de fotos", pronto: true },
+  { href: "/patio/mais/ocorrencia-atipica", icone: "⚠️", rotulo: "Ocorrência atípica", pronto: true, abertoAEquipe: true },
 ];
 
 export default function MaisPage() {

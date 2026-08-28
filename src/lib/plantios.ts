@@ -190,6 +190,27 @@ export async function marcarStatusPlantio(
   if (error) throw error;
 }
 
+// Encerra um plantio "por desativação da estrutura" (handoff Mais/Pacote 1,
+// seção 1): o canteiro foi inativado e a planta é perene, não dava pra
+// mover nem colher. Diferente de marcarStatusPlantio("encerrado"): NÃO cria
+// perda automática — encerramento por decisão operacional não é perda real
+// e não pode poluir os relatórios de produtividade. Guarda o motivo em
+// observacao_encerramento.
+export async function encerrarPlantioPorDesativacao(
+  plantioId: string,
+  observacao: string,
+): Promise<void> {
+  await requerSessao();
+  const { error } = await supabase
+    .from("plantios")
+    .update({
+      status: "encerrado_por_desativacao",
+      observacao_encerramento: observacao.trim() || null,
+    })
+    .eq("id", plantioId);
+  if (error) throw error;
+}
+
 // Saldo disponível de um plantio (view plantios_saldo — sempre calculado).
 export async function buscarSaldoPlantio(plantioId: string): Promise<number | null> {
   await requerSessao();

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OcorrenciasBanner } from "./ocorrencias-banner";
 
 // Módulo 1 (Pátio de Compostagem). Os 6 blocos vêm do wireframe (estrutura
 // fechada, rodada 7) — "Compostagem" (Registrar alimentação), "Horta"
@@ -22,6 +23,8 @@ export default function PatioPage() {
           ←
         </Link>
       </div>
+
+      <OcorrenciasBanner />
 
       <div className="grid grid-cols-2 gap-3">
         {BLOCOS.map((bloco) => (

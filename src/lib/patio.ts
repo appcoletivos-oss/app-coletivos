@@ -234,16 +234,118 @@ export async function encerrarESubstituirParceiro(
   return criarParceiro(novo);
 }
 
-export async function listarCanteiros(): Promise<Canteiro[]> {
+export async function listarCanteiros(incluirInativos = false): Promise<Canteiro[]> {
   await requerSessao();
-  const { data, error } = await supabase
-    .from("canteiros")
-    .select("*")
-    .eq("ativo", true)
-    .order("nome", { ascending: true });
+  let consulta = supabase.from("canteiros").select("*").order("nome", { ascending: true });
+  if (!incluirInativos) consulta = consulta.eq("ativo", true);
 
+  const { data, error } = await consulta;
   if (error) throw error;
   return data ?? [];
+}
+
+// -----------------------------------------------------------------------------
+// Cadastro → Canteiros: exclusão real x inativação (handoff Mais/Pacote 1,
+// seção 1). Canteiro que nunca teve nenhum plantio/registro pode ser
+// apagado de verdade; qualquer histórico -> só inativação. Um canteiro com
+// plantio ativo (ativo/germinando) bloqueia as duas ações até mover/colher.
+// -----------------------------------------------------------------------------
+
+// Plantios que ainda seguram a remoção do canteiro — mesma lista de
+// listarPlantiosAtivosPorCanteiro (status ativo/germinando), duplicada aqui
+// só pra evitar import circular entre patio.ts e plantios.ts.
+export async function plantiosPendentesDoCanteiro(
+  canteiroId: string,
+): Promise<{ id: string; cultura_nome: string; status: string }[]> {
+  await requerSessao();
+  const { data, error } = await supabase
+    .from("plantios")
+    .select("id, status, culturas(nome)")
+    .eq("canteiro_id", canteiroId)
+    .in("status", ["ativo", "germinando"]);
+
+  if (error) throw error;
+  type Linha = { id: string; status: string; culturas: { nome: string }[] | { nome: string } | null };
+  return ((data ?? []) as Linha[]).map((l) => ({
+    id: l.id,
+    status: l.status,
+    cultura_nome: Array.isArray(l.culturas) ? (l.culturas[0]?.nome ?? "—") : (l.culturas?.nome ?? "—"),
+  }));
+}
+
+// true = o canteiro já teve QUALQUER plantio ou registro (colheita/manejo)
+// vinculado -> só inativação. false = nunca teve nada -> exclusão real
+// permitida. registros_perdas/plantio_doacoes/registros_manejo_plantios não
+// têm canteiro_id (referenciam plantio_id), então já entram na contagem de
+// plantios — se não há plantio no canteiro, não há como haver esses.
+export async function canteiroTemHistorico(canteiroId: string): Promise<boolean> {
+  await requerSessao();
+  const contar = (tabela: string) =>
+    supabase.from(tabela).select("id", { count: "exact", head: true }).eq("canteiro_id", canteiroId);
+
+  const [plantios, colheitas, manejos] = await Promise.all([
+    contar("plantios"),
+    contar("registros_colheita"),
+    contar("registros_manejo"),
+  ]);
+  for (const r of [plantios, colheitas, manejos]) if (r.error) throw r.error;
+  return (plantios.count ?? 0) + (colheitas.count ?? 0) + (manejos.count ?? 0) > 0;
+}
+
+export async function excluirCanteiro(id: string): Promise<void> {
+  await requerSessao();
+  const { error } = await supabase.from("canteiros").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Inativa o canteiro (estrutura quebrada, perene encerrada) — reaproveita
+// `ativo=false` (some das listas de novo plantio, continua no histórico) e
+// guarda o motivo/autor. inativado_por vem do banco? não: canteiros não tem
+// default auth.uid() nessa coluna nova, então preenche aqui.
+export async function inativarCanteiro(id: string, motivo: string): Promise<void> {
+  await requerSessao();
+  const { data: sessao } = await supabase.auth.getSession();
+  const { error } = await supabase
+    .from("canteiros")
+    .update({
+      ativo: false,
+      motivo_inativacao: motivo.trim() || null,
+      inativado_em: new Date().toISOString(),
+      inativado_por: sessao.session?.user.id ?? null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function reativarCanteiro(id: string): Promise<void> {
+  await requerSessao();
+  const { error } = await supabase
+    .from("canteiros")
+    .update({ ativo: true, motivo_inativacao: null, inativado_em: null, inativado_por: null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// -----------------------------------------------------------------------------
+// Fotos: signed URLs pra exibir imagens do bucket privado "registros-fotos"
+// (a galeria é a primeira tela que EXIBE foto, não só faz upload). Devolve
+// um Map caminho -> URL assinada (1h). Caminhos que falharem ficam de fora.
+// -----------------------------------------------------------------------------
+export async function urlsAssinadasFotos(caminhos: string[]): Promise<Map<string, string>> {
+  await requerSessao();
+  const mapa = new Map<string, string>();
+  const unicos = [...new Set(caminhos.filter(Boolean))];
+  if (unicos.length === 0) return mapa;
+
+  const { data, error } = await supabase.storage
+    .from("registros-fotos")
+    .createSignedUrls(unicos, 3600);
+  if (error) throw error;
+
+  for (const item of data ?? []) {
+    if (item.signedUrl && item.path) mapa.set(item.path, item.signedUrl);
+  }
+  return mapa;
 }
 
 export async function criarCanteiro(dados: {

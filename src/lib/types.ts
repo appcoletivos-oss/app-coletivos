@@ -54,6 +54,12 @@ export interface Canteiro {
   vinculado_desde: string;
   vinculado_ate: string | null;
   observacoes: string | null;
+  // Preenchidos quando o canteiro é INATIVADO pela aba Canteiros (estrutura
+  // quebrada, perene encerrada) — distinto de vinculado_ate (turnover). Ver
+  // migration 20260830000000 e claude/handoff-mais-pacote1.md, seção 1.
+  motivo_inativacao: string | null;
+  inativado_em: string | null;
+  inativado_por: string | null;
 }
 
 // coordenacao e consultor têm o mesmo nível de acesso (ver matriz da
@@ -231,7 +237,11 @@ export type StatusPlantio =
   | "perdido"
   | "doado"
   | "transplantado"
-  | "encerrado";
+  | "encerrado"
+  // Canteiro/estrutura foi inativado e a planta não podia ser movida nem
+  // colhida (perene). NÃO conta como perda real nos relatórios de
+  // produtividade — ver claude/handoff-mais-pacote1.md, seção 1.
+  | "encerrado_por_desativacao";
 
 // Um lote de plantio. plantio_pai_id monta a linhagem quando o lote nasceu
 // de um transplante parcial (origem=divisao) — ver linhagemPlantio em
@@ -250,6 +260,7 @@ export interface Plantio {
   dias_para_colheita_snapshot: number | null;
   previsao_colheita: string | null;
   status: StatusPlantio;
+  observacao_encerramento: string | null;
   registrado_por: string | null;
   criado_em: string;
 }
@@ -478,4 +489,138 @@ export interface NovoPonto {
   longitude: number;
   distancia_metros: number;
   observacao?: string | null;
+}
+
+// -----------------------------------------------------------------------------
+// Bloco "Mais completo" — Pacote 1 (ocorrência atípica, avisos ao shopping,
+// galeria de fotos, financeiro).
+//
+// Espelham as tabelas criadas em
+// supabase/migrations/20260830000000_mais_pacote1.sql — ver
+// claude/handoff-mais-pacote1.md pro modelo completo.
+// -----------------------------------------------------------------------------
+
+// --- Ocorrência atípica ---
+
+export interface OcorrenciaAtipica {
+  id: string;
+  descricao: string;
+  foto_url: string;
+  resolvido: boolean;
+  resolvido_em: string | null;
+  resolvido_por: string | null;
+  registrado_por: string | null;
+  criado_em: string;
+}
+
+// `foto_url` é obrigatória na tela (a coluna é not null no banco). `virarAviso`
+// não é coluna — a tela usa pra criar junto uma linha em avisos_shopping.
+export interface NovaOcorrenciaAtipica {
+  descricao: string;
+  foto_url: string;
+}
+
+// --- Avisos ao shopping ---
+
+export type DirecaoAviso = "para_shopping" | "do_shopping";
+export type CanalAviso = "whatsapp" | "email" | "presencial" | "outro";
+export type AssuntoAviso =
+  | "pedido_compra"
+  | "ocorrencia_atipica"
+  | "pagamento_mensal"
+  | "planejamento_atividade"
+  | "pedido_manutencao"
+  | "outro";
+export type StatusAviso = "pendente" | "resolvido";
+
+export interface AvisoShopping {
+  id: string;
+  direcao: DirecaoAviso;
+  canal: CanalAviso;
+  assunto: AssuntoAviso;
+  descricao: string;
+  data: string;
+  status: StatusAviso;
+  ocorrencia_atipica_id: string | null;
+  lancamento_financeiro_id: string | null;
+  registrado_por: string | null;
+  criado_em: string;
+}
+
+export interface NovoAvisoShopping {
+  direcao: DirecaoAviso;
+  canal: CanalAviso;
+  assunto: AssuntoAviso;
+  descricao: string;
+  data: string;
+  ocorrencia_atipica_id?: string | null;
+  lancamento_financeiro_id?: string | null;
+}
+
+// --- Financeiro ---
+
+export type TipoFinanceiro = "entrada" | "saida";
+export type OrigemLancamento =
+  | "manual"
+  | "compra_compostagem"
+  | "compra_horta"
+  | "repasse_shopping"
+  | "outro";
+
+export interface CategoriaFinanceira {
+  id: string;
+  nome: string;
+  tipo: TipoFinanceiro;
+  criado_por: string | null;
+  criado_em: string;
+}
+
+export interface NovaCategoriaFinanceira {
+  nome: string;
+  tipo: TipoFinanceiro;
+}
+
+export interface LancamentoFinanceiro {
+  id: string;
+  tipo: TipoFinanceiro;
+  categoria_id: string;
+  valor: number;
+  data: string;
+  descricao: string | null;
+  comprovante_url: string;
+  origem: OrigemLancamento;
+  registro_origem_id: string | null;
+  aviso_id: string | null;
+  registrado_por: string | null;
+  criado_em: string;
+}
+
+// `comprovante_url` é obrigatória (coluna not null). Projeção com o nome da
+// categoria já resolvido (join) fica em LancamentoComCategoria.
+export interface NovoLancamentoFinanceiro {
+  tipo: TipoFinanceiro;
+  categoria_id: string;
+  valor: number;
+  data: string;
+  descricao?: string | null;
+  comprovante_url: string;
+  origem?: OrigemLancamento;
+  aviso_id?: string | null;
+}
+
+export interface LancamentoComCategoria extends LancamentoFinanceiro {
+  categoria_nome: string;
+}
+
+// --- Galeria de fotos ---
+
+// Uma linha por foto, vinda da função listar_galeria_fotos() (união das
+// tabelas que já guardam foto_url). `foto_url` é o caminho interno no bucket
+// privado — a tela troca por signed URL pra exibir (urlsAssinadasFotos).
+export interface GaleriaFoto {
+  origem: string;
+  registro_id: string;
+  foto_url: string;
+  data: string;
+  descricao: string | null;
 }
