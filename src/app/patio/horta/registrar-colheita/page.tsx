@@ -2,30 +2,26 @@
 
 // Horta → Registrar colheita
 //
-// Mesmo espírito de Registrar compostagem: fluxo de 6 passos, uma
-// pergunta por tela, "quem registrou" e "data" nunca perguntados (vêm da
-// sessão de login e do relógio do aparelho). Canteiro vem do banco
-// (tabela `canteiros`, mesma usada pela aba Canteiros do Cadastro).
+// Ajustada pro handoff v3 (HANDOFF_HORTA_COMPLETO.md, seção 3.6): a
+// cultura não é mais digitada — a pessoa escolhe um plantio ativo do
+// canteiro, e a cultura vem dele. O fechamento do plantio NUNCA é
+// automático por ciclo_produtivo: a ficha da cultura só pré-marca o
+// checkbox "essa colheita encerra o plantio?" (pra ciclo=unico), mas quem
+// registra sempre confirma ou troca — porque a mesma espécie pode ser
+// tratada como corte único ou colheita contínua dependendo de como o
+// coletivo realmente maneja.
 //
-// Cultura é diferente de loja/caixa: são 69 espécies no histórico real, e
-// a decisão de produto (2026-08-22) foi um grid fixo com as mais comuns
-// (CULTURAS_COMUNS, em @/lib/horta) + um botão "Outra" que abre um campo
-// de texto — sem cadastro próprio de culturas por trás. O campo "Outra"
-// sugere correção ortográfica (sugerirCorrecaoCultura) porque boa parte
-// da equipe não escreve com muita segurança — é só sugestão, nunca uma
-// trava: a pessoa pode ignorar e salvar o texto como digitou.
+// "Quem registrou" e "data" nunca são perguntados — vêm da sessão de
+// login e do relógio do aparelho, mesmo espírito de sempre.
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
-import {
-  CULTURAS_COMUNS,
-  iconeTipoCanteiro,
-  salvarRegistroColheita,
-  sugerirCorrecaoCultura,
-} from "@/lib/horta";
+import { iconeTipoCanteiro, salvarRegistroColheita } from "@/lib/horta";
+import { listarCulturasAtivas } from "@/lib/culturas";
+import { criarPlantio, listarPlantiosAtivosPorCanteiro, marcarStatusPlantio } from "@/lib/plantios";
 import { criarFilaOffline } from "@/lib/fila-offline";
-import type { Canteiro, NovoRegistroColheita } from "@/lib/types";
+import type { Canteiro, Cultura, NovoRegistroColheita, PlantioComCultura } from "@/lib/types";
 import {
   BotaoAvancar,
   BotaoGrande,
@@ -56,15 +52,31 @@ function RegistrarColheitaConteudo() {
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [canteiros, setCanteiros] = useState<Canteiro[]>([]);
+  const [culturas, setCulturas] = useState<Cultura[]>([]);
 
   const [canteiroId, setCanteiroId] = useState<string | null>(null);
-  const [cultura, setCultura] = useState<string | null>(null);
-  const [outraAtiva, setOutraAtiva] = useState(false);
-  const [outraTexto, setOutraTexto] = useState("");
+  const [plantios, setPlantios] = useState<PlantioComCultura[]>([]);
+  const [carregandoPlantios, setCarregandoPlantios] = useState(false);
+  const [plantioId, setPlantioId] = useState<string | null>(null);
+
+  // Cadastro rápido de planta "já existente" sem sair da tela (ver
+  // HANDOFF_HORTA_COMPLETO.md, seção 3.6, e pedido do usuário, 2026-08-28):
+  // quem colhe uma planta que ainda não tem plantio cadastrado cadastra na
+  // hora, sem perder o canteiro já escolhido no passo 1.
+  const [cadastroAberto, setCadastroAberto] = useState(false);
+  const [cadastroBuscaCultura, setCadastroBuscaCultura] = useState("");
+  const [cadastroCulturaId, setCadastroCulturaId] = useState<string | null>(null);
+  const [cadastroQuantidade, setCadastroQuantidade] = useState("");
+  const [cadastroUnidade, setCadastroUnidade] = useState("");
+  const [cadastroSalvando, setCadastroSalvando] = useState(false);
+  const [cadastroErro, setCadastroErro] = useState<string | null>(null);
+
   const [peso, setPeso] = useState(1);
   const [foto, setFoto] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [observacao, setObservacao] = useState("");
+  const [encerraPlantio, setEncerraPlantio] = useState(true);
+  const [encerraTocado, setEncerraTocado] = useState(false);
 
   const [salvando, setSalvando] = useState(false);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
@@ -75,8 +87,14 @@ function RegistrarColheitaConteudo() {
     let cancelado = false;
     async function carregar() {
       try {
-        const lista = await listarCanteiros();
-        if (!cancelado) setCanteiros(lista);
+        const [listaCanteiros, listaCulturas] = await Promise.all([
+          listarCanteiros(),
+          listarCulturasAtivas(),
+        ]);
+        if (!cancelado) {
+          setCanteiros(listaCanteiros);
+          setCulturas(listaCulturas);
+        }
       } catch {
         if (!cancelado) {
           setErroCarregamento(
@@ -115,21 +133,77 @@ function RegistrarColheitaConteudo() {
     });
   }
 
-  function escolherCulturaComum(nome: string) {
-    setCultura(nome);
-    setOutraAtiva(false);
-    setOutraTexto("");
+  async function escolherCanteiro(id: string) {
+    setCanteiroId(id);
+    setPlantioId(null);
+    setCarregandoPlantios(true);
+    try {
+      const lista = await listarPlantiosAtivosPorCanteiro(id);
+      setPlantios(lista.filter((p) => p.status === "ativo"));
+      irPara(2);
+    } catch {
+      setErroCarregamento("Não deu pra carregar os plantios desse canteiro agora.");
+    } finally {
+      setCarregandoPlantios(false);
+    }
+  }
+
+  function escolherPlantio(p: PlantioComCultura) {
+    setPlantioId(p.id);
+    // Valor de partida do checkbox: pré-marca conforme o ciclo_produtivo da
+    // cultura, mas só se a pessoa ainda não mexeu manualmente nele.
+    if (!encerraTocado) setEncerraPlantio(p.cultura_ciclo_produtivo === "unico");
     irPara(3);
   }
 
-  function confirmarOutraCultura() {
-    if (!outraTexto.trim()) return;
-    setCultura(outraTexto.trim());
-    irPara(3);
+  const culturasFiltradas = useMemo(() => {
+    const alvo = cadastroBuscaCultura.trim().toLowerCase();
+    if (!alvo) return culturas;
+    return culturas.filter((c) => c.nome.toLowerCase().includes(alvo));
+  }, [culturas, cadastroBuscaCultura]);
+
+  function abrirCadastroRapido() {
+    setCadastroAberto(true);
+    setCadastroBuscaCultura("");
+    setCadastroCulturaId(null);
+    setCadastroQuantidade("");
+    setCadastroUnidade("");
+    setCadastroErro(null);
+  }
+
+  // Cadastra o plantio "já existente" sem sair da tela, mantendo o
+  // canteiro já escolhido no passo 1, e segue direto pro registro da
+  // colheita vinculado a esse plantio recém-criado.
+  async function salvarCadastroRapido() {
+    if (!canteiroId || !cadastroCulturaId) return;
+    setCadastroSalvando(true);
+    setCadastroErro(null);
+    try {
+      const novo = await criarPlantio({
+        cultura_id: cadastroCulturaId,
+        canteiro_id: canteiroId,
+        origem: "ja_existente",
+        quantidade_inicial: cadastroQuantidade.trim() ? Number(cadastroQuantidade) : null,
+        unidade: cadastroUnidade.trim() || null,
+      });
+      const culturaEscolhida = culturas.find((c) => c.id === cadastroCulturaId);
+      const novoComCultura: PlantioComCultura = {
+        ...novo,
+        cultura_nome: culturaEscolhida?.nome ?? "—",
+        cultura_ciclo_produtivo: culturaEscolhida?.ciclo_produtivo ?? "unico",
+      };
+      setPlantios((lista) => [novoComCultura, ...lista]);
+      setCadastroAberto(false);
+      escolherPlantio(novoComCultura);
+    } catch {
+      setCadastroErro("Não deu pra cadastrar agora. Confira a internet e tente de novo.");
+    } finally {
+      setCadastroSalvando(false);
+    }
   }
 
   async function salvar() {
-    if (!canteiroId || !cultura) return;
+    if (!canteiroId || !plantioId || !plantioSelecionado) return;
     setSalvando(true);
     setErroSalvar(null);
 
@@ -144,7 +218,8 @@ function RegistrarColheitaConteudo() {
 
     const registro: NovoRegistroColheita = {
       canteiro_id: canteiroId,
-      cultura,
+      plantio_id: plantioId,
+      cultura: plantioSelecionado.cultura_nome,
       peso_kg: peso,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
@@ -153,6 +228,14 @@ function RegistrarColheitaConteudo() {
 
     try {
       await salvarRegistroColheita(registro);
+      if (encerraPlantio) {
+        try {
+          await marcarStatusPlantio(plantioId, "colhido");
+        } catch {
+          // Colheita já foi salva — se o fechamento do plantio falhar,
+          // dá pra fechar depois manualmente pelo Mapa. Não trava a tela.
+        }
+      }
       setResultado("ok");
     } catch {
       filaOffline.enfileirar(registro);
@@ -166,20 +249,20 @@ function RegistrarColheitaConteudo() {
   function recomecar() {
     setPasso(1);
     setCanteiroId(null);
-    setCultura(null);
-    setOutraAtiva(false);
-    setOutraTexto("");
+    setPlantios([]);
+    setPlantioId(null);
     setPeso(1);
     selecionarFoto(null);
     setObservacao("");
+    setEncerraPlantio(true);
+    setEncerraTocado(false);
     setResultado(null);
     setErroSalvar(null);
+    setCadastroAberto(false);
   }
 
   const canteiroSelecionado = canteiros.find((c) => c.id === canteiroId);
-  // Recalcula a cada tecla digitada — lista de referência é pequena
-  // (~60 nomes curtos), então não pesa fazer isso sem debounce.
-  const sugestaoOrtografia = sugerirCorrecaoCultura(outraTexto);
+  const plantioSelecionado = plantios.find((p) => p.id === plantioId);
 
   if (carregando) {
     return (
@@ -236,7 +319,7 @@ function RegistrarColheitaConteudo() {
 
   return (
     <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
-      <BarraContexto canteiro={canteiroSelecionado} cultura={cultura} passo={passo} />
+      <BarraContexto canteiro={canteiroSelecionado} cultura={plantioSelecionado?.cultura_nome ?? null} passo={passo} />
       <PontosPasso passo={passo} total={TOTAL_PASSOS} />
 
       {pendentesOffline > 0 && (
@@ -254,10 +337,7 @@ function RegistrarColheitaConteudo() {
                 icone={iconeTipoCanteiro(c.tipo)}
                 rotulo={c.nome}
                 selecionado={c.id === canteiroId}
-                onClick={() => {
-                  setCanteiroId(c.id);
-                  irPara(2);
-                }}
+                onClick={() => escolherCanteiro(c.id)}
               />
             ))}
           </div>
@@ -270,60 +350,54 @@ function RegistrarColheitaConteudo() {
       )}
 
       {passo === 2 && (
-        <Passo titulo="Qual foi a cultura colhida?">
-          {!outraAtiva ? (
-            <>
-              <div className="grid grid-cols-3 gap-2">
-                {CULTURAS_COMUNS.map((cu) => (
-                  <BotaoGrande
-                    key={cu.nome}
-                    icone={cu.icone}
-                    rotulo={cu.nome}
-                    selecionado={cu.nome === cultura}
-                    onClick={() => escolherCulturaComum(cu.nome)}
-                  />
-                ))}
-                <BotaoGrande
-                  icone="✏️"
-                  rotulo="Outra"
-                  selecionado={false}
-                  onClick={() => setOutraAtiva(true)}
-                />
-              </div>
-            </>
+        <Passo titulo="Qual plantio foi colhido?">
+          {carregandoPlantios ? (
+            <p className="text-center text-sm text-zinc-600">Carregando…</p>
+          ) : cadastroAberto ? (
+            <CadastroRapidoPlantio
+              culturas={culturasFiltradas}
+              busca={cadastroBuscaCultura}
+              onBuscar={setCadastroBuscaCultura}
+              culturaId={cadastroCulturaId}
+              onEscolherCultura={setCadastroCulturaId}
+              quantidade={cadastroQuantidade}
+              onMudarQuantidade={setCadastroQuantidade}
+              unidade={cadastroUnidade}
+              onMudarUnidade={setCadastroUnidade}
+              salvando={cadastroSalvando}
+              erro={cadastroErro}
+              onCancelar={() => setCadastroAberto(false)}
+              onSalvar={salvarCadastroRapido}
+            />
           ) : (
-            <div>
-              <label className="mb-3 block text-[11px] font-semibold text-zinc-600">
-                Nome da cultura
-                <input
-                  autoFocus
-                  value={outraTexto}
-                  onChange={(e) => setOutraTexto(e.target.value)}
-                  placeholder="Ex.: Girassol"
-                  className="mt-1 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
-                />
-              </label>
-
-              {sugestaoOrtografia && (
+            <div className="flex flex-col gap-2">
+              {plantios.map((p) => (
                 <button
+                  key={p.id}
                   type="button"
-                  onClick={() => setOutraTexto(sugestaoOrtografia)}
-                  className="mb-3 block w-full rounded-lg border-2 border-dashed border-[#2e6b3e] bg-[#eaf3ea] px-3 py-2 text-left text-xs text-[#2e6b3e]"
+                  onClick={() => escolherPlantio(p)}
+                  className={[
+                    "rounded-lg border-2 px-3 py-2 text-left",
+                    p.id === plantioId ? "border-[#2e6b3e] bg-[#eaf3ea]" : "border-zinc-300 bg-white",
+                  ].join(" ")}
                 >
-                  Quis dizer <strong>{sugestaoOrtografia}</strong>? <span className="underline">Toque pra corrigir</span>
+                  <span className="block text-sm font-bold text-zinc-900">{p.cultura_nome}</span>
+                  <span className="block text-[11px] text-zinc-500">
+                    {p.cultura_ciclo_produtivo === "unico" ? "ciclo único" : "ciclo contínuo"}
+                  </span>
                 </button>
+              ))}
+              {plantios.length === 0 && (
+                <p className="text-center text-xs text-zinc-500">
+                  Nenhum plantio ativo nesse canteiro ainda.
+                </p>
               )}
-
-              <BotaoAvancar onClick={confirmarOutraCultura} desabilitado={!outraTexto.trim()} />
               <button
                 type="button"
-                onClick={() => {
-                  setOutraAtiva(false);
-                  setOutraTexto("");
-                }}
-                className="mx-auto mt-2 block text-[11px] text-zinc-400 underline"
+                onClick={abrirCadastroRapido}
+                className="mt-1 rounded-lg border-2 border-dashed border-zinc-400 bg-white px-3 py-2 text-center text-xs font-bold text-zinc-700"
               >
-                voltar pra lista
+                ➕ Não achei — cadastrar planta que já existia
               </button>
             </div>
           )}
@@ -368,18 +442,27 @@ function RegistrarColheitaConteudo() {
             placeholder='Ex.: "praga na folha, precisa de manejo"...'
             className="min-h-24 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
           />
+
+          <label className="mt-3 flex items-start gap-2 rounded-lg border-2 border-zinc-300 bg-[#f1efe6] p-3 text-xs text-zinc-700">
+            <input
+              type="checkbox"
+              checked={encerraPlantio}
+              onChange={(e) => {
+                setEncerraPlantio(e.target.checked);
+                setEncerraTocado(true);
+              }}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>
+              Essa colheita encerra o plantio? (a planta some do canteiro depois dessa colheita)
+              <span className="mt-0.5 block text-[10px] text-zinc-500">
+                Pré-marcado conforme o ciclo da cultura — confira ou troque conforme o que aconteceu de verdade.
+              </span>
+            </span>
+          </label>
+
           <div className="mt-4 flex flex-col gap-2">
             <BotaoAvancar onClick={() => irPara(6)} texto="Continuar" />
-            <button
-              type="button"
-              onClick={() => {
-                setObservacao("");
-                irPara(6);
-              }}
-              className="mx-auto text-[11px] text-zinc-400 underline"
-            >
-              pular, sem observação
-            </button>
           </div>
         </Passo>
       )}
@@ -388,10 +471,15 @@ function RegistrarColheitaConteudo() {
         <Passo titulo="Confere antes de salvar">
           <div className="rounded-xl border-2 border-zinc-800 bg-white p-3 text-sm">
             <LinhaResumo rotulo="Canteiro" valor={canteiroSelecionado?.nome ?? "—"} onEditar={() => irPara(1)} />
-            <LinhaResumo rotulo="Cultura" valor={cultura ?? "—"} onEditar={() => irPara(2)} />
+            <LinhaResumo rotulo="Plantio" valor={plantioSelecionado?.cultura_nome ?? "—"} onEditar={() => irPara(2)} />
             <LinhaResumo rotulo="Peso colhido" valor={`${peso} kg`} onEditar={() => irPara(3)} />
             <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(4)} />
-            <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(5)} ultima />
+            <LinhaResumo
+              rotulo="Encerra o plantio?"
+              valor={encerraPlantio ? "sim" : "não"}
+              onEditar={() => irPara(5)}
+              ultima
+            />
           </div>
 
           {erroSalvar && <p className="mt-3 text-center text-xs text-red-700">{erroSalvar}</p>}
@@ -434,6 +522,120 @@ export default function RegistrarColheitaPage() {
     >
       <RegistrarColheitaConteudo />
     </Suspense>
+  );
+}
+
+// Formulário inline de cadastro rápido (origem="ja_existente"), sem sair
+// da tela de Registrar colheita — mesmo canteiro já escolhido no passo 1.
+// Ver HANDOFF_HORTA_COMPLETO.md, seção 3.6, e pedido do usuário, 2026-08-28.
+function CadastroRapidoPlantio({
+  culturas,
+  busca,
+  onBuscar,
+  culturaId,
+  onEscolherCultura,
+  quantidade,
+  onMudarQuantidade,
+  unidade,
+  onMudarUnidade,
+  salvando,
+  erro,
+  onCancelar,
+  onSalvar,
+}: {
+  culturas: Cultura[];
+  busca: string;
+  onBuscar: (v: string) => void;
+  culturaId: string | null;
+  onEscolherCultura: (id: string) => void;
+  quantidade: string;
+  onMudarQuantidade: (v: string) => void;
+  unidade: string;
+  onMudarUnidade: (v: string) => void;
+  salvando: boolean;
+  erro: string | null;
+  onCancelar: () => void;
+  onSalvar: () => void;
+}) {
+  return (
+    <div className="rounded-xl border-2 border-zinc-800 bg-[#f1efe6] p-3">
+      <p className="mb-2 text-sm font-bold text-zinc-900">🌳 Cadastrar planta que já existia</p>
+      <p className="mb-3 text-[11px] text-zinc-500">
+        Cadastro rápido — vira um plantio origem &quot;já existente&quot; neste canteiro, e você já segue direto pra colheita.
+      </p>
+
+      <input
+        autoFocus
+        value={busca}
+        onChange={(e) => onBuscar(e.target.value)}
+        placeholder="🔎 Buscar cultura…"
+        className="mb-2 w-full rounded-lg border-2 border-zinc-300 p-2.5 text-sm"
+      />
+      <div className="mb-3 flex max-h-40 flex-col gap-1.5 overflow-y-auto">
+        {culturas.map((cu) => (
+          <button
+            key={cu.id}
+            type="button"
+            onClick={() => onEscolherCultura(cu.id)}
+            className={[
+              "rounded-lg border-2 px-3 py-2 text-left text-sm font-semibold",
+              cu.id === culturaId
+                ? "border-[#2e6b3e] bg-[#eaf3ea] text-[#2e6b3e]"
+                : "border-zinc-300 bg-white text-zinc-800",
+            ].join(" ")}
+          >
+            {cu.nome}
+          </button>
+        ))}
+        {culturas.length === 0 && (
+          <p className="text-center text-xs text-zinc-500">
+            Nenhuma cultura encontrada. Cadastre pela tela Mais → Cadastro → Culturas.
+          </p>
+        )}
+      </div>
+
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <label className="block text-[11px] font-semibold text-zinc-600">
+          Quantidade (opcional)
+          <input
+            value={quantidade}
+            onChange={(e) => onMudarQuantidade(e.target.value)}
+            inputMode="decimal"
+            placeholder="—"
+            className="mt-1 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
+          />
+        </label>
+        <label className="block text-[11px] font-semibold text-zinc-600">
+          Unidade
+          <input
+            value={unidade}
+            onChange={(e) => onMudarUnidade(e.target.value)}
+            placeholder="Ex.: pés"
+            className="mt-1 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
+          />
+        </label>
+      </div>
+
+      {erro && <p className="mb-2 text-center text-xs text-red-700">{erro}</p>}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCancelar}
+          className="flex-1 rounded-lg border-2 border-zinc-300 bg-white py-2.5 text-xs font-bold text-zinc-700"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          disabled={!culturaId || salvando}
+          onClick={onSalvar}
+          className="flex-1 rounded-lg border-2 border-[#2e6b3e] bg-[#eaf3ea] py-2.5 text-xs font-bold text-[#2e6b3e] disabled:opacity-50"
+        >
+          {salvando ? "Salvando…" : "✅ Cadastrar e continuar"}
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -35,12 +35,19 @@ export type TipoCanteiro =
   | "bombona"
   | "galeia"
   | "geodesica"
+  | "pergolado"
+  | "vaso"
+  | "bandeja_muda"
+  | "saco_muda"
   | "outro";
+
+export type LocalCanteiro = "patio" | "teto";
 
 export interface Canteiro {
   id: string;
   nome: string;
   tipo: TipoCanteiro;
+  local: LocalCanteiro;
   area_m2: number | null;
   capacidade_texto: string | null;
   ativo: boolean;
@@ -116,12 +123,16 @@ export interface RegistroAlimentacaoResumo {
 
 // Dados que a tela de Registrar colheita (Horta) precisa enviar pra
 // salvar um registro novo. `cultura` é texto livre por decisão de produto
-// (2026-08-22): a tela mostra um grid fixo com as espécies mais colhidas
-// historicamente + botão "Outra" pra digitar o nome — sem tabela própria
-// de culturas por trás, então não passa por padronização automática (ver
-// Registro Geral, seção 3).
+// (2026-08-22) — histórico anterior ao bloco Plantios (ver Registro Geral,
+// seção 3). Desde o handoff v3 (ver HANDOFF_HORTA_COMPLETO.md, seção 3.6),
+// todo registro novo também exige `plantio_id`: a tela passa a escolher um
+// plantio ativo do canteiro (não mais a cultura em texto livre digitado à
+// mão) e `cultura` é preenchido automaticamente com o nome da ficha do
+// plantio escolhido, só pra manter a coluna (nullable no banco, obrigatória
+// na aplicação) consistente com o histórico antigo.
 export interface NovoRegistroColheita {
   canteiro_id: string;
+  plantio_id: string;
   cultura: string;
   peso_kg: number;
   foto_url?: string | null;
@@ -132,13 +143,229 @@ export interface NovoRegistroColheita {
 export type TipoManejo = "capina_seletiva" | "adubacao" | "poda" | "raleamento" | "outro";
 
 // Dados que a tela de Horta → Manejo precisa enviar pra salvar um registro
-// novo (capina seletiva, adubação, poda, raleamento).
+// novo (capina seletiva, adubação, poda, raleamento). `plantioIds` não é
+// coluna de registros_manejo — é usado só pelo cliente (lib/plantios.ts,
+// vincularManejoAPlantios) pra preencher registros_manejo_plantios logo
+// depois do insert: em adubação/capina vem auto-preenchido com todos os
+// plantios ativos do canteiro (sem passo extra na tela); em poda/
+// raleamento vem da seleção manual feita na tela (ver handoff, seção 3.9).
 export interface NovoRegistroManejo {
   canteiro_id: string;
   tipo_manejo: TipoManejo;
   observacao?: string | null;
   foto_url?: string | null;
   evento_agenda_id?: string | null;
+  plantioIds?: string[];
+}
+
+// -----------------------------------------------------------------------------
+// Horta → Plantios (rastreio ponta a ponta: origem → germinação →
+// transplante → colheita/perda/doação) + fichas de cultura.
+//
+// Espelham as tabelas criadas em
+// supabase/migrations/20260827130000_horta_plantios.sql — ver
+// HANDOFF_HORTA_COMPLETO.md (v3) pro modelo completo e o porquê de cada
+// campo.
+// -----------------------------------------------------------------------------
+
+export type CicloProdutivo = "unico" | "continuo";
+
+// unico = colheita encerra o plantio (alface, cenoura). continuo = planta
+// permanece produzindo (tomate, banana). É só o valor de PARTIDA do
+// checkbox "essa colheita encerra o plantio?" em Registrar colheita — a
+// pessoa registrando sempre confirma ou troca (nunca é regra automática).
+export interface Cultura {
+  id: string;
+  nome: string;
+  solo_ideal: string | null;
+  rega_ideal: string | null;
+  ciclo_produtivo: CicloProdutivo;
+  dias_para_germinacao: number | null;
+  dias_para_transplante: number | null;
+  dias_para_colheita: number | null;
+  ativo: boolean;
+  observacoes: string | null;
+}
+
+export interface NovaCultura {
+  nome: string;
+  solo_ideal?: string | null;
+  rega_ideal?: string | null;
+  ciclo_produtivo: CicloProdutivo;
+  dias_para_germinacao?: number | null;
+  dias_para_transplante?: number | null;
+  dias_para_colheita?: number | null;
+  observacoes?: string | null;
+}
+
+export type TipoManejoRegime = "capina_seletiva" | "adubacao" | "poda" | "raleamento";
+export type ReferenciaManejo = "plantio" | "germinacao" | "transplante";
+
+// Regra de manejo periódico de uma cultura, contada a partir de um marco
+// configurável (referencia) — ex.: tomate/adubação conta do transplante,
+// não do plantio. Base do motor de "demandas do dia" (lib/plantios.ts).
+export interface RegimeManejoCultura {
+  id: string;
+  cultura_id: string;
+  tipo_manejo: TipoManejoRegime;
+  referencia: ReferenciaManejo;
+  dias_inicio: number;
+  intervalo_dias: number;
+  observacao: string | null;
+}
+
+export interface NovoRegimeManejoCultura {
+  cultura_id: string;
+  tipo_manejo: TipoManejoRegime;
+  referencia: ReferenciaManejo;
+  dias_inicio: number;
+  intervalo_dias: number;
+  observacao?: string | null;
+}
+
+export type OrigemPlantio = "semente" | "muda_comprada" | "estaca" | "ja_existente" | "divisao";
+export type StatusPlantio =
+  | "germinando"
+  | "ativo"
+  | "colhido"
+  | "perdido"
+  | "doado"
+  | "transplantado"
+  | "encerrado";
+
+// Um lote de plantio. plantio_pai_id monta a linhagem quando o lote nasceu
+// de um transplante parcial (origem=divisao) — ver linhagemPlantio em
+// lib/plantios.ts.
+export interface Plantio {
+  id: string;
+  cultura_id: string;
+  canteiro_id: string;
+  plantio_pai_id: string | null;
+  origem: OrigemPlantio;
+  data_inicio: string;
+  quantidade_inicial: number | null;
+  unidade: string | null;
+  data_germinacao: string | null;
+  quantidade_germinada: number | null;
+  dias_para_colheita_snapshot: number | null;
+  previsao_colheita: string | null;
+  status: StatusPlantio;
+  registrado_por: string | null;
+  criado_em: string;
+}
+
+// Dados que Registrar plantio precisa enviar pra criar um lote novo.
+// dias_para_colheita_snapshot/previsao_colheita são calculados no cliente
+// a partir da ficha da cultura escolhida (cópia do valor no momento do
+// plantio — memória histórica, ver Plantio.dias_para_colheita_snapshot).
+export interface NovoPlantio {
+  cultura_id: string;
+  canteiro_id: string;
+  origem: OrigemPlantio;
+  data_inicio?: string;
+  quantidade_inicial?: number | null;
+  unidade?: string | null;
+  dias_para_colheita_snapshot?: number | null;
+  previsao_colheita?: string | null;
+  status?: StatusPlantio;
+}
+
+// Projeção usada pelas telas de seleção de plantio (Registrar colheita,
+// Manejo, Transplantar) — nome da cultura já resolvido via join, pra não
+// precisar de uma segunda consulta.
+export interface PlantioComCultura extends Plantio {
+  cultura_nome: string;
+  cultura_ciclo_produtivo: CicloProdutivo;
+}
+
+export interface PlantioTransplante {
+  id: string;
+  plantio_origem_id: string;
+  plantio_destino_id: string;
+  canteiro_destino_id: string;
+  quantidade: number | null;
+  observacao: string | null;
+  foto_url: string | null;
+  registrado_por: string | null;
+  registrado_em: string;
+}
+
+export interface RegistroPerda {
+  id: string;
+  plantio_id: string;
+  quantidade: number | null;
+  unidade: string | null;
+  motivo: string | null;
+  foto_url: string | null;
+  registrado_por: string | null;
+  registrado_em: string;
+}
+
+export interface NovoRegistroPerda {
+  plantio_id: string;
+  quantidade?: number | null;
+  unidade?: string | null;
+  motivo?: string | null;
+  foto_url?: string | null;
+}
+
+// Doação de mudas/parte de um lote — distinta da doação de alimento já
+// colhido pra ZEIS (bloco Venda, fora de escopo aqui).
+export interface PlantioDoacao {
+  id: string;
+  plantio_id: string;
+  quantidade: number | null;
+  unidade: string | null;
+  destino: string | null;
+  observacao: string | null;
+  foto_url: string | null;
+  registrado_por: string | null;
+  registrado_em: string;
+}
+
+export interface NovaPlantioDoacao {
+  plantio_id: string;
+  quantidade?: number | null;
+  unidade?: string | null;
+  destino?: string | null;
+  observacao?: string | null;
+  foto_url?: string | null;
+}
+
+// Saldo disponível do lote (view plantios_saldo — sempre calculado, nunca
+// armazenado).
+export interface PlantioSaldo {
+  id: string;
+  quantidade_disponivel: number | null;
+}
+
+// Estoque do viveiro (Horta → Estoque do viveiro): agrupa plantios_saldo
+// por cultura, considerando só canteiros tipo geodesica/bandeja_muda/
+// saco_muda (cobre qualquer origem — compra, sobra de transplante,
+// germinação própria ainda não alocada). Sem custo/fornecedor por decisão
+// explícita — controle financeiro fica fora do módulo Horta, reservado pro
+// bloco Mais (financeiro), que ainda não existe.
+export interface LoteEstoqueViveiro {
+  plantioId: string;
+  canteiroId: string;
+  canteiroNome: string;
+  origem: OrigemPlantio;
+  dataInicio: string;
+  quantidade: number | null;
+  unidade: string | null;
+  status: "germinando" | "ativo";
+}
+
+export interface EstoqueViveiroCultura {
+  culturaId: string;
+  culturaNome: string;
+  // germinando = soma do saldo dos lotes ainda status='germinando'
+  // (aguardando confirmação). disponivel = soma do saldo dos lotes já
+  // status='ativo' (confirmado). Nunca somados num único número — ver
+  // handoff/pedido do usuário, 2026-08-28.
+  germinando: number;
+  disponivel: number;
+  lotes: LoteEstoqueViveiro[];
 }
 
 // Dados que a tela de Compostagem → Análise sensorial precisa enviar pra

@@ -1,14 +1,21 @@
 import Link from "next/link";
 
-// Hub do bloco Horta (ver wireframe, seção 1 e 2). "Registrar colheita" e
-// "Manejo" têm tela real por trás; cultivo (germinação→transplante) e
-// perdas/aproveitamento seguem placeholder, mesmo padrão do hub de
+// Hub do bloco Horta (ver HANDOFF_HORTA_COMPLETO.md, v3, seções 4 e 5).
+// Ordem de construção: plantio/germinação → transplante/mapa → colheita
+// ajustada → perda/doação → manejo ajustado → avisos automáticos. Itens
+// sem tela real ainda ficam com pronto:false, mesmo padrão do hub de
 // Compostagem.
 const ITENS = [
+  { href: "/patio/horta/registrar-plantio", icone: "🌱", rotulo: "Registrar plantio", pronto: true },
+  { href: "/patio/horta/confirmar-germinacao", icone: "🌿", rotulo: "Confirmar germinação", pronto: true },
+  { href: "/patio/horta/transplantar", icone: "🔀", rotulo: "Transplantar", pronto: true },
+  { href: "/patio/horta/mapa", icone: "🗺️", rotulo: "Mapa", pronto: true },
   { href: "/patio/horta/registrar-colheita", icone: "🧺", rotulo: "Registrar colheita", pronto: true },
-  { href: "#", icone: "🌱", rotulo: "Cultivo", pronto: false },
+  { href: "/patio/horta/registrar-perda", icone: "📉", rotulo: "Registrar perda", pronto: true },
+  { href: "/patio/horta/registrar-doacao", icone: "🎁", rotulo: "Registrar doação", pronto: true },
   { href: "/patio/horta/manejo", icone: "🌾", rotulo: "Manejo", pronto: true },
-  { href: "#", icone: "📉", rotulo: "Perdas / aproveitamento", pronto: false },
+  { href: "/patio/horta/avisos", icone: "🔔", rotulo: "Avisos", pronto: true },
+  { href: "/patio/horta/estoque-viveiro", icone: "📦", rotulo: "Estoque do viveiro", pronto: true },
 ];
 
 export default function HortaPage() {

@@ -3,10 +3,15 @@
 // Horta → Manejo
 //
 // Registro de manejo recorrente por canteiro (capina seletiva, adubação,
-// poda, raleamento). Fluxo de 4 passos — mais curto que Registrar
-// colheita porque foto e observação são opcionais aqui e cabem juntas num
-// só passo. "Quem registrou" e "data" nunca são perguntados: vêm da
-// sessão de login e do relógio do aparelho.
+// poda, raleamento). Ajustado pro handoff v3
+// (HANDOFF_HORTA_COMPLETO.md, seção 3.9): adubação/capina vinculam
+// automaticamente a todos os plantios ativos do canteiro (sem passo extra
+// na tela); poda/raleamento exigem escolher manualmente quais plantios
+// foram afetados. Esse vínculo é o que alimenta "próximo manejo devido"
+// por plantio (motor de demandas do dia).
+//
+// "Quem registrou" e "data" nunca são perguntados: vêm da sessão de login
+// e do relógio do aparelho.
 //
 // Os pedaços de tela (TelaBase, Passo, BotaoGrande etc.) vêm de
 // @/components/fluxo-registro — compartilhados com as demais telas de
@@ -17,8 +22,9 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
 import { iconeTipoCanteiro, salvarRegistroManejo } from "@/lib/horta";
+import { listarPlantiosAtivosPorCanteiro } from "@/lib/plantios";
 import { criarFilaOffline } from "@/lib/fila-offline";
-import type { Canteiro, NovoRegistroManejo, TipoManejo } from "@/lib/types";
+import type { Canteiro, NovoRegistroManejo, PlantioComCultura, TipoManejo } from "@/lib/types";
 import {
   BotaoAvancar,
   BotaoGrande,
@@ -28,7 +34,7 @@ import {
   TelaBase,
 } from "@/components/fluxo-registro";
 
-const TOTAL_PASSOS = 4;
+const TOTAL_PASSOS = 5;
 
 const filaOffline = criarFilaOffline<NovoRegistroManejo>(
   "app-coletivo:fila-registros-manejo",
@@ -41,6 +47,12 @@ const TIPOS_MANEJO: { valor: TipoManejo; icone: string; rotulo: string }[] = [
   { valor: "raleamento", icone: "🍃", rotulo: "Raleamento" },
   { valor: "outro", icone: "🔧", rotulo: "Outro" },
 ];
+
+// Adubação e capina auto-vinculam a todos os plantios ativos do canteiro;
+// poda e raleamento exigem escolha manual — ver handoff, seção 3.9.
+function exigeSelecaoDePlantios(tipo: TipoManejo | null): boolean {
+  return tipo === "poda" || tipo === "raleamento";
+}
 
 // useSearchParams exige um limite de Suspense em volta (regra do Next.js
 // pra Client Components) — por isso o export default vira só um wrapper,
@@ -57,7 +69,9 @@ function ManejoConteudo() {
   const [canteiros, setCanteiros] = useState<Canteiro[]>([]);
 
   const [canteiroId, setCanteiroId] = useState<string | null>(null);
+  const [plantiosCanteiro, setPlantiosCanteiro] = useState<PlantioComCultura[]>([]);
   const [tipoManejo, setTipoManejo] = useState<TipoManejo | null>(null);
+  const [plantioIdsSelecionados, setPlantioIdsSelecionados] = useState<string[]>([]);
   const [foto, setFoto] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [observacao, setObservacao] = useState("");
@@ -111,6 +125,28 @@ function ManejoConteudo() {
     });
   }
 
+  async function escolherCanteiro(id: string) {
+    setCanteiroId(id);
+    try {
+      setPlantiosCanteiro(await listarPlantiosAtivosPorCanteiro(id));
+    } catch {
+      setPlantiosCanteiro([]);
+    }
+    irPara(2);
+  }
+
+  function escolherTipoManejo(tipo: TipoManejo) {
+    setTipoManejo(tipo);
+    setPlantioIdsSelecionados([]);
+    irPara(exigeSelecaoDePlantios(tipo) ? 3 : 4);
+  }
+
+  function alternarPlantioSelecionado(id: string) {
+    setPlantioIdsSelecionados((atual) =>
+      atual.includes(id) ? atual.filter((p) => p !== id) : [...atual, id],
+    );
+  }
+
   async function salvar() {
     if (!canteiroId || !tipoManejo) return;
     setSalvando(true);
@@ -127,12 +163,19 @@ function ManejoConteudo() {
       }
     }
 
+    const plantioIds = exigeSelecaoDePlantios(tipoManejo)
+      ? plantioIdsSelecionados
+      : tipoManejo === "adubacao" || tipoManejo === "capina_seletiva"
+        ? plantiosCanteiro.map((p) => p.id)
+        : [];
+
     const registro: NovoRegistroManejo = {
       canteiro_id: canteiroId,
       tipo_manejo: tipoManejo,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
       evento_agenda_id: eventoAgendaId,
+      plantioIds,
     };
 
     try {
@@ -150,7 +193,9 @@ function ManejoConteudo() {
   function recomecar() {
     setPasso(1);
     setCanteiroId(null);
+    setPlantiosCanteiro([]);
     setTipoManejo(null);
+    setPlantioIdsSelecionados([]);
     selecionarFoto(null);
     setObservacao("");
     setResultado(null);
@@ -233,10 +278,7 @@ function ManejoConteudo() {
                 icone={iconeTipoCanteiro(c.tipo)}
                 rotulo={c.nome}
                 selecionado={c.id === canteiroId}
-                onClick={() => {
-                  setCanteiroId(c.id);
-                  irPara(2);
-                }}
+                onClick={() => escolherCanteiro(c.id)}
               />
             ))}
           </div>
@@ -257,17 +299,42 @@ function ManejoConteudo() {
                 icone={t.icone}
                 rotulo={t.rotulo}
                 selecionado={t.valor === tipoManejo}
-                onClick={() => {
-                  setTipoManejo(t.valor);
-                  irPara(3);
-                }}
+                onClick={() => escolherTipoManejo(t.valor)}
               />
             ))}
           </div>
         </Passo>
       )}
 
-      {passo === 3 && (
+      {passo === 3 && exigeSelecaoDePlantios(tipoManejo) && (
+        <Passo titulo="Quais plantios foram afetados?">
+          <div className="flex flex-col gap-2">
+            {plantiosCanteiro.map((p) => {
+              const selecionado = plantioIdsSelecionados.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => alternarPlantioSelecionado(p.id)}
+                  className={[
+                    "flex items-center justify-between rounded-lg border-2 px-3 py-2 text-left text-sm font-semibold",
+                    selecionado ? "border-[#2e6b3e] bg-[#eaf3ea] text-[#2e6b3e]" : "border-zinc-300 bg-white text-zinc-800",
+                  ].join(" ")}
+                >
+                  {p.cultura_nome}
+                  {selecionado && <span aria-hidden="true">✓</span>}
+                </button>
+              );
+            })}
+            {plantiosCanteiro.length === 0 && (
+              <p className="text-center text-xs text-zinc-500">Nenhum plantio ativo nesse canteiro.</p>
+            )}
+          </div>
+          <BotaoAvancar onClick={() => irPara(4)} desabilitado={plantioIdsSelecionados.length === 0} />
+        </Passo>
+      )}
+
+      {passo === 4 && (
         <Passo titulo="Foto e observação (opcionais)">
           <label className="block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
             <input
@@ -292,17 +359,31 @@ function ManejoConteudo() {
             className="mt-4 min-h-24 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
           />
 
-          <BotaoAvancar onClick={() => irPara(4)} />
+          <BotaoAvancar onClick={() => irPara(5)} />
         </Passo>
       )}
 
-      {passo === 4 && (
+      {passo === 5 && (
         <Passo titulo="Confere antes de salvar">
           <div className="rounded-xl border-2 border-zinc-800 bg-white p-3 text-sm">
             <LinhaResumo rotulo="Canteiro" valor={canteiroSelecionado?.nome ?? "—"} onEditar={() => irPara(1)} />
             <LinhaResumo rotulo="Tipo de manejo" valor={tipoSelecionado?.rotulo ?? "—"} onEditar={() => irPara(2)} />
-            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(3)} />
-            <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(3)} ultima />
+            {exigeSelecaoDePlantios(tipoManejo) && (
+              <LinhaResumo
+                rotulo="Plantios afetados"
+                valor={`${plantioIdsSelecionados.length} selecionado(s)`}
+                onEditar={() => irPara(3)}
+              />
+            )}
+            {(tipoManejo === "adubacao" || tipoManejo === "capina_seletiva") && (
+              <LinhaResumo
+                rotulo="Plantios afetados"
+                valor={`todos os ${plantiosCanteiro.length} ativos do canteiro`}
+                onEditar={() => irPara(1)}
+              />
+            )}
+            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(4)} />
+            <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(4)} ultima />
           </div>
 
           {erroSalvar && <p className="mt-3 text-center text-xs text-red-700">{erroSalvar}</p>}
@@ -324,7 +405,7 @@ function ManejoConteudo() {
       {passo > 1 && !resultado && (
         <button
           type="button"
-          onClick={() => irPara(passo - 1)}
+          onClick={() => irPara(passo === 4 && !exigeSelecaoDePlantios(tipoManejo) ? 2 : passo - 1)}
           className="mt-4 block w-full text-center text-xs text-zinc-500 underline"
         >
           voltar

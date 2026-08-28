@@ -7,6 +7,7 @@ import { requerSessao } from "./auth";
 import type {
   Caixa,
   Canteiro,
+  LocalCanteiro,
   NovoRegistroAlimentacao,
   NovoRegistroAnaliseSensorial,
   NovoRegistroBombona,
@@ -248,6 +249,7 @@ export async function listarCanteiros(): Promise<Canteiro[]> {
 export async function criarCanteiro(dados: {
   nome: string;
   tipo: TipoCanteiro;
+  local?: LocalCanteiro;
   area_m2?: number | null;
   capacidade_texto?: string | null;
 }): Promise<Canteiro> {
@@ -257,6 +259,7 @@ export async function criarCanteiro(dados: {
     .insert({
       nome: dados.nome.trim(),
       tipo: dados.tipo,
+      local: dados.local ?? "patio",
       area_m2: dados.area_m2 ?? null,
       capacidade_texto: dados.capacidade_texto?.trim() || null,
     })
@@ -279,7 +282,13 @@ export async function renomearCanteiro(id: string, nome: string): Promise<void> 
 
 export async function encerrarESubstituirCanteiro(
   idAntigo: string,
-  novo: { nome: string; tipo: TipoCanteiro; area_m2?: number | null; capacidade_texto?: string | null },
+  novo: {
+    nome: string;
+    tipo: TipoCanteiro;
+    local?: LocalCanteiro;
+    area_m2?: number | null;
+    capacidade_texto?: string | null;
+  },
 ): Promise<Canteiro> {
   await requerSessao();
   const hoje = new Date().toISOString().slice(0, 10);

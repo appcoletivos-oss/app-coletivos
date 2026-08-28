@@ -12,21 +12,40 @@ import {
   listarCanteiros,
   renomearCanteiro,
 } from "@/lib/patio";
-import type { Canteiro, TipoCanteiro } from "@/lib/types";
+import type { Canteiro, LocalCanteiro, TipoCanteiro } from "@/lib/types";
 
 const TIPOS: { valor: TipoCanteiro; rotulo: string }[] = [
   { valor: "canteiro_solo", rotulo: "Canteiro no solo" },
   { valor: "bombona", rotulo: "Bombona" },
   { valor: "galeia", rotulo: "Galeia" },
   { valor: "geodesica", rotulo: "Geodésica" },
+  { valor: "pergolado", rotulo: "Pergolado" },
+  { valor: "vaso", rotulo: "Vaso" },
+  { valor: "bandeja_muda", rotulo: "Bandeja de muda" },
+  { valor: "saco_muda", rotulo: "Saco de muda" },
   { valor: "outro", rotulo: "Outro" },
+];
+
+const LOCAIS: { valor: LocalCanteiro; rotulo: string }[] = [
+  { valor: "patio", rotulo: "Pátio" },
+  { valor: "teto", rotulo: "Teto" },
 ];
 
 function rotuloTipo(tipo: TipoCanteiro): string {
   return TIPOS.find((t) => t.valor === tipo)?.rotulo ?? tipo;
 }
 
-type DadosCanteiro = { nome: string; tipo: TipoCanteiro; area_m2: number | null; capacidade_texto: string | null };
+function rotuloLocal(local: LocalCanteiro): string {
+  return LOCAIS.find((l) => l.valor === local)?.rotulo ?? local;
+}
+
+type DadosCanteiro = {
+  nome: string;
+  tipo: TipoCanteiro;
+  local: LocalCanteiro;
+  area_m2: number | null;
+  capacidade_texto: string | null;
+};
 
 export function AbaCanteiros() {
   const [carregando, setCarregando] = useState(true);
@@ -127,7 +146,7 @@ export function AbaCanteiros() {
               <>
                 <p className="text-sm font-bold text-zinc-900">{c.nome}</p>
                 <p className="text-[11px] text-zinc-500">
-                  {rotuloTipo(c.tipo)}
+                  {rotuloTipo(c.tipo)} · {rotuloLocal(c.local)}
                   {c.area_m2 ? ` · ${c.area_m2} m²` : ""}
                   {c.capacidade_texto ? ` · ${c.capacidade_texto}` : ""}
                 </p>
@@ -170,6 +189,7 @@ function FormCanteiro({
 }) {
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<TipoCanteiro>("canteiro_solo");
+  const [local, setLocal] = useState<LocalCanteiro>("patio");
   const [area, setArea] = useState("");
   const [capacidade, setCapacidade] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -183,6 +203,7 @@ function FormCanteiro({
       await onSalvar({
         nome,
         tipo,
+        local,
         area_m2: area.trim() ? Number(area) : null,
         capacidade_texto: capacidade.trim() || null,
       });
@@ -214,6 +235,20 @@ function FormCanteiro({
           {TIPOS.map((t) => (
             <option key={t.valor} value={t.valor}>
               {t.rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="mb-2 block text-[11px] font-semibold text-zinc-600">
+        Local
+        <select
+          value={local}
+          onChange={(e) => setLocal(e.target.value as LocalCanteiro)}
+          className="mt-1 w-full rounded-lg border-2 border-zinc-300 bg-white p-2 text-sm"
+        >
+          {LOCAIS.map((l) => (
+            <option key={l.valor} value={l.valor}>
+              {l.rotulo}
             </option>
           ))}
         </select>
