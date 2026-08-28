@@ -50,3 +50,5 @@ skills-lock.json
 # material de apoio (planilhas reais, wireframes) — fica só na pasta local,
 # fora do git, porque algumas planilhas têm nome real de gente da equipe
 /Arquivos extras/
+
+claude/
