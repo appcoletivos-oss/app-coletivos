@@ -91,6 +91,13 @@ export default function AgendaPage() {
 
   return (
     <TelaBase titulo="Agenda" icone="📅" voltarHref="/patio">
+      <Link
+        href="/patio/agenda/planejamento-semanal"
+        className="mb-3 block w-full rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-2.5 text-center text-xs font-bold text-[#2e6b3e]"
+      >
+        📝 Planejamento semanal
+      </Link>
+
       {carregando && <p className="text-center text-sm text-zinc-600">Carregando…</p>}
       {erro && <p className="text-center text-sm text-red-700">{erro}</p>}
 

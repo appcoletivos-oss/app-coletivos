@@ -16,23 +16,24 @@
 // (Horta), pra não duplicar essa UI a cada fluxo novo.
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
+  ErroValidacaoBombonas,
   enviarFotoRegistro,
   listarCaixas,
   listarParceirosAtivos,
   rotuloStatusCaixa,
   salvarFotosExtras,
-  salvarRegistroAlimentacao,
+  salvarRegistroAlimentacaoComBombonas,
 } from "@/lib/patio";
+import { vincularRegistroAoItem } from "@/lib/relatorio-turno";
 import { criarFilaOffline } from "@/lib/fila-offline";
 import type { Caixa, NovoRegistroAlimentacao, Parceiro, TipoResiduo } from "@/lib/types";
 import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
 import {
   BotaoAvancar,
   BotaoGrande,
-  CampoPeso,
   LinhaResumo,
   Passo,
   PontosPasso,
@@ -45,7 +46,9 @@ const TOTAL_PASSOS = 6;
 
 // Mesma chave de antes — a fila genérica só trocou a forma de guardar,
 // não o formato salvo, então quem já tinha registros pendentes no
-// celular não perde nada nessa mudança.
+// celular (formato antigo, sem `bombonas`) não perde nada nessa mudança:
+// salvarRegistroAlimentacaoComBombonas trata os dois formatos (ver
+// lib/patio.ts).
 const filaOffline = criarFilaOffline<NovoRegistroAlimentacao>(
   "app-coletivo:fila-registros-alimentacao",
 );
@@ -56,13 +59,38 @@ const TIPOS_RESIDUO: { valor: TipoResiduo; icone: string; rotulo: string }[] = [
   { valor: "outro_organico", icone: "🥬", rotulo: "Outro orgânico" },
 ];
 
+// Uma linha de bombona no formulário (Sprint A, item 3 — sprint doc, seção
+// 7). `chave` é só identidade de UI (key do React), não é coluna de nada.
+interface LinhaBombona {
+  chave: string;
+  numero: string;
+  peso: string;
+}
+
+function linhaBombonaVazia(): LinhaBombona {
+  return { chave: crypto.randomUUID(), numero: "", peso: "" };
+}
+
+// Aceita vírgula como separador decimal (regra da sprint, item 1 da Etapa
+// 1) — mesmo espírito de CampoPeso em fluxo-registro.tsx.
+function paraNumero(texto: string): number {
+  return Number(texto.replace(",", "."));
+}
+
 // useSearchParams exige um limite de Suspense em volta (regra do Next.js
 // pra Client Components) — por isso o export default vira só um wrapper,
 // ver RegistrarAlimentacaoPage no fim do arquivo.
 function RegistrarAlimentacaoConteudo() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // Preenchido quando a tela é aberta a partir de um link da Agenda
   // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
-  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+  const eventoAgendaId = searchParams.get("evento_agenda_id");
+  // Preenchidos quando a tela é aberta a partir do Relatório do Turno
+  // (Sprint A, item 6 — "Registrar dado" num item tipo_registro=compostagem)
+  // — ver lib/relatorio-turno.ts, hrefSubFormulario.
+  const relatorioItemId = searchParams.get("relatorio_item");
+  const voltarHref = searchParams.get("voltar");
 
   const [passo, setPasso] = useState(1);
 
@@ -73,7 +101,7 @@ function RegistrarAlimentacaoConteudo() {
 
   const [parceiroId, setParceiroId] = useState<string | null>(null);
   const [caixaId, setCaixaId] = useState<string | null>(null);
-  const [peso, setPeso] = useState(5);
+  const [bombonas, setBombonas] = useState<LinhaBombona[]>([linhaBombonaVazia()]);
   const [tipoResiduo, setTipoResiduo] = useState<TipoResiduo>("alimento");
   const [temperaturaAtiva, setTemperaturaAtiva] = useState(true);
   const [temperatura, setTemperatura] = useState(30);
@@ -118,10 +146,12 @@ function RegistrarAlimentacaoConteudo() {
   }, []);
 
   // Tenta esvaziar a fila offline sozinho quando a tela abre com internet,
-  // e de novo sempre que a conexão voltar.
+  // e de novo sempre que a conexão voltar. salvarRegistroAlimentacaoComBombonas
+  // decide sozinho entre RPC (formato novo) e insert direto (formato
+  // antigo já enfileirado antes desta sprint) — ver lib/patio.ts.
   useEffect(() => {
     async function tentarEnviar() {
-      const { restantes } = await filaOffline.tentarEnviar(salvarRegistroAlimentacao);
+      const { restantes } = await filaOffline.tentarEnviar(salvarRegistroAlimentacaoComBombonas);
       setPendentesOffline(restantes);
     }
     tentarEnviar();
@@ -133,8 +163,43 @@ function RegistrarAlimentacaoConteudo() {
     setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
   }
 
+  function atualizarBombona(chave: string, patch: Partial<LinhaBombona>) {
+    setBombonas((atual) => atual.map((b) => (b.chave === chave ? { ...b, ...patch } : b)));
+  }
+
+  function adicionarBombona() {
+    setBombonas((atual) => [...atual, linhaBombonaVazia()]);
+  }
+
+  function removerBombona(chave: string) {
+    setBombonas((atual) => (atual.length <= 1 ? atual : atual.filter((b) => b.chave !== chave)));
+  }
+
+  // Número repetido na mesma coleta — bloqueado na tela (a constraint
+  // unique no banco é a rede de segurança, não a mensagem, ver sprint doc
+  // seção 7). Comparação já com o texto normalizado (trim).
+  const numerosRepetidos = useMemo(() => {
+    const vistos = new Map<string, number>();
+    for (const b of bombonas) {
+      const chave = b.numero.trim();
+      if (!chave) continue;
+      vistos.set(chave, (vistos.get(chave) ?? 0) + 1);
+    }
+    return new Set([...vistos.entries()].filter(([, n]) => n > 1).map(([k]) => k));
+  }, [bombonas]);
+
+  const bombonasValidas = bombonas.every((b) => {
+    const peso = paraNumero(b.peso);
+    return b.numero.trim().length > 0 && b.peso.trim().length > 0 && !Number.isNaN(peso) && peso > 0;
+  });
+  const semDuplicatas = numerosRepetidos.size === 0;
+  const pesoTotal = bombonas.reduce((soma, b) => {
+    const n = paraNumero(b.peso);
+    return soma + (Number.isNaN(n) ? 0 : n);
+  }, 0);
+
   async function salvar() {
-    if (!parceiroId || !caixaId) return;
+    if (!parceiroId || !caixaId || !bombonasValidas || !semDuplicatas) return;
     setSalvando(true);
     setErroSalvar(null);
 
@@ -152,16 +217,17 @@ function RegistrarAlimentacaoConteudo() {
     const registro: NovoRegistroAlimentacao = {
       parceiro_id: parceiroId,
       caixa_id: caixaId,
-      peso_kg: peso,
+      peso_kg: pesoTotal,
       tipo_residuo: tipoResiduo,
       temperatura_c: temperaturaAtiva ? temperatura : null,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
       evento_agenda_id: eventoAgendaId,
+      bombonas: bombonas.map((b) => ({ numero_bombona: b.numero.trim(), peso_kg: paraNumero(b.peso) })),
     };
 
     try {
-      const registroId = await salvarRegistroAlimentacao(registro);
+      const registroId = await salvarRegistroAlimentacaoComBombonas(registro);
       // Fotos extras (além da capa) — melhor esforço: se o upload falhar
       // (ex.: internet caiu no meio), o registro principal já está salvo,
       // não trava a tela por causa de foto extra.
@@ -173,10 +239,41 @@ function RegistrarAlimentacaoConteudo() {
           // segue sem as extras — a capa já foi salva com o registro.
         }
       }
+
+      // Aberta a partir do Relatório do Turno (Sprint A, item 6): vincula
+      // o registro ao item e volta pro relatório em vez de mostrar a tela
+      // de sucesso daqui — melhor esforço (se o vínculo falhar, o
+      // registro principal já está salvo mesmo assim).
+      if (relatorioItemId) {
+        try {
+          await vincularRegistroAoItem(relatorioItemId, "registros_alimentacao", registroId);
+        } catch {
+          // segue sem o vínculo — o registro já está salvo.
+        }
+        if (voltarHref) {
+          router.push(decodeURIComponent(voltarHref));
+          return;
+        }
+      }
       setResultado("ok");
-    } catch {
+    } catch (erro) {
+      // Erro de dado (bombona inválida) — a RPC recusou, e tentar de novo
+      // offline não vai resolver: mostra a mensagem e deixa a pessoa
+      // corrigir aqui mesmo, sem enfileirar nem avançar de tela.
+      if (erro instanceof ErroValidacaoBombonas) {
+        setErroSalvar(erro.message);
+        return;
+      }
       filaOffline.enfileirar(registro);
       setPendentesOffline(filaOffline.contar());
+      // Enfileirado sem internet: não há id pra vincular ao item do
+      // Relatório do Turno (limitação conhecida, seção 11e do sprint doc)
+      // — mesmo assim volta pro relatório, que o item simplesmente fica
+      // sem marcar.
+      if (relatorioItemId && voltarHref) {
+        router.push(decodeURIComponent(voltarHref));
+        return;
+      }
       setResultado("offline");
     } finally {
       setSalvando(false);
@@ -187,7 +284,7 @@ function RegistrarAlimentacaoConteudo() {
     setPasso(1);
     setParceiroId(null);
     setCaixaId(null);
-    setPeso(5);
+    setBombonas([linhaBombonaVazia()]);
     setTipoResiduo("alimento");
     setTemperaturaAtiva(true);
     setTemperatura(30);
@@ -327,7 +424,68 @@ function RegistrarAlimentacaoConteudo() {
 
       {passo === 3 && (
         <Passo titulo="Quanto pesou e que tipo era?">
-          <CampoPeso valor={peso} onMudar={setPeso} autoFocus />
+          <div className="flex flex-col gap-2">
+            {bombonas.map((b, indice) => {
+              const repetida = b.numero.trim().length > 0 && numerosRepetidos.has(b.numero.trim());
+              return (
+                <div key={b.chave} className="rounded-xl border-2 border-zinc-800 bg-white p-2.5">
+                  <div className="flex items-center gap-2">
+                    <label className="flex-1 text-[11px] font-semibold text-zinc-600">
+                      Nº da bombona
+                      <input
+                        value={b.numero}
+                        onChange={(e) => atualizarBombona(b.chave, { numero: e.target.value })}
+                        placeholder="Ex.: 12"
+                        autoFocus={indice === 0}
+                        className={[
+                          "mt-1 w-full rounded-lg border-2 p-2 text-sm",
+                          repetida ? "border-red-400" : "border-zinc-300",
+                        ].join(" ")}
+                      />
+                    </label>
+                    <label className="flex-1 text-[11px] font-semibold text-zinc-600">
+                      Peso (kg)
+                      <input
+                        value={b.peso}
+                        onChange={(e) => atualizarBombona(b.chave, { peso: e.target.value })}
+                        inputMode="decimal"
+                        placeholder="Ex.: 8,5"
+                        className="mt-1 w-full rounded-lg border-2 border-zinc-300 p-2 text-sm"
+                      />
+                    </label>
+                    {bombonas.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removerBombona(b.chave)}
+                        aria-label={`Remover bombona ${indice + 1}`}
+                        className="mt-5 shrink-0 text-sm font-bold text-red-700"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {repetida && (
+                    <p className="mt-1 text-[10px] text-red-700">
+                      Já tem outra bombona com esse número nesta coleta.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={adicionarBombona}
+            className="mt-2 w-full rounded-xl border-2 border-dashed border-[#2e6b3e] py-2 text-xs font-bold text-[#2e6b3e]"
+          >
+            + outra bombona
+          </button>
+
+          <p className="mt-3 text-center text-sm font-bold text-zinc-900">
+            Total: {pesoTotal.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg
+          </p>
+
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {TIPOS_RESIDUO.map((t) => (
               <button
@@ -345,7 +503,7 @@ function RegistrarAlimentacaoConteudo() {
               </button>
             ))}
           </div>
-          <BotaoAvancar onClick={() => irPara(4)} />
+          <BotaoAvancar onClick={() => irPara(4)} desabilitado={!bombonasValidas || !semDuplicatas} />
         </Passo>
       )}
 
@@ -415,7 +573,19 @@ function RegistrarAlimentacaoConteudo() {
           <div className="rounded-xl border-2 border-zinc-800 bg-white p-3 text-sm">
             <LinhaResumo rotulo="Loja" valor={parceiroSelecionado?.nome ?? "—"} onEditar={() => irPara(1)} />
             <LinhaResumo rotulo="Caixa" valor={caixaSelecionada ? `Caixa ${caixaSelecionada.numero}` : "—"} onEditar={() => irPara(2)} />
-            <LinhaResumo rotulo="Peso" valor={`${peso} kg`} onEditar={() => irPara(3)} />
+            {bombonas.map((b, indice) => (
+              <LinhaResumo
+                key={b.chave}
+                rotulo={`Bombona ${indice + 1}`}
+                valor={`nº ${b.numero || "—"} · ${b.peso || "0"} kg`}
+                onEditar={() => irPara(3)}
+              />
+            ))}
+            <LinhaResumo
+              rotulo="Total"
+              valor={`${pesoTotal.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}
+              onEditar={() => irPara(3)}
+            />
             <LinhaResumo rotulo="Tipo" valor={tipoSelecionado?.rotulo ?? "—"} onEditar={() => irPara(3)} />
             <LinhaResumo
               rotulo="Temperatura"
@@ -434,7 +604,7 @@ function RegistrarAlimentacaoConteudo() {
 
           <button
             type="button"
-            disabled={salvando}
+            disabled={salvando || !bombonasValidas || !semDuplicatas}
             onClick={salvar}
             className="mt-4 w-full rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-3 text-sm font-bold text-[#2e6b3e] disabled:opacity-60"
           >

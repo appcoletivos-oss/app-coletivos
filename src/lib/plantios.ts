@@ -104,6 +104,23 @@ export async function listarPlantioPorId(id: string): Promise<PlantioComCultura 
   return data ? mapearComCultura([data])[0] : null;
 }
 
+// Monta a linha pronta pro insert em `plantios` a partir dos dados da
+// tela — extraído de criarPlantio pra ser reaproveitado por criarPlantios
+// (Sprint A, item 1: plantio em consórcio) sem duplicar a lógica.
+function construirLinhaPlantio(dados: NovoPlantio) {
+  return {
+    cultura_id: dados.cultura_id,
+    canteiro_id: dados.canteiro_id,
+    origem: dados.origem,
+    data_inicio: dados.data_inicio ?? new Date().toISOString().slice(0, 10),
+    quantidade_inicial: dados.quantidade_inicial ?? null,
+    unidade: dados.unidade?.trim() || null,
+    dias_para_colheita_snapshot: dados.dias_para_colheita_snapshot ?? null,
+    previsao_colheita: dados.previsao_colheita ?? null,
+    status: dados.status ?? (dados.origem === "semente" ? "germinando" : "ativo"),
+  };
+}
+
 // Cria um lote novo. dias_para_colheita_snapshot/previsao_colheita vêm
 // prontos de quem chama (a tela já tem a ficha da cultura carregada — ver
 // Registrar plantio, calcularPrevisaoColheita). origem=semente entra como
@@ -112,22 +129,29 @@ export async function criarPlantio(dados: NovoPlantio): Promise<Plantio> {
   await requerSessao();
   const { data, error } = await supabase
     .from("plantios")
-    .insert({
-      cultura_id: dados.cultura_id,
-      canteiro_id: dados.canteiro_id,
-      origem: dados.origem,
-      data_inicio: dados.data_inicio ?? new Date().toISOString().slice(0, 10),
-      quantidade_inicial: dados.quantidade_inicial ?? null,
-      unidade: dados.unidade?.trim() || null,
-      dias_para_colheita_snapshot: dados.dias_para_colheita_snapshot ?? null,
-      previsao_colheita: dados.previsao_colheita ?? null,
-      status: dados.status ?? (dados.origem === "semente" ? "germinando" : "ativo"),
-    })
+    .insert(construirLinhaPlantio(dados))
     .select("*")
     .single();
 
   if (error) throw error;
   return data;
+}
+
+// Cria N lotes de uma vez (plantio em consórcio — Sprint A, item 1): mesmo
+// canteiro_id/data_inicio, uma linha por cultura. Um único insert com
+// array é uma transação só no Postgres — se uma linha falhar (ex.: cultura
+// inexistente), nenhuma fica salva pela metade. `plantios` não tem policy
+// de DELETE (confirmado na migration 20260827130000), então não dava pra
+// "desfazer" no cliente se fossem N inserts separados.
+export async function criarPlantios(lista: NovoPlantio[]): Promise<Plantio[]> {
+  await requerSessao();
+  const { data, error } = await supabase
+    .from("plantios")
+    .insert(lista.map(construirLinhaPlantio))
+    .select("*");
+
+  if (error) throw error;
+  return data ?? [];
 }
 
 // Confirma a germinação de um lote (origem=semente): registra data e

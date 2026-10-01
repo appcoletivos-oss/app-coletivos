@@ -110,8 +110,27 @@ export interface ConvitePreCadastro {
 
 export type TipoResiduo = "alimento" | "poda_verde" | "outro_organico";
 
+// Uma bombona de uma coleta (Sprint A, item 3 —
+// SPRINT_A_REGISTRO_SIMPLIFICADO_ETAPA2.md, seção 7). Número livre, sem
+// cadastro prévio — ver registro_alimentacao_bombonas na migration
+// 20261001010000.
+export interface BombonaDaColeta {
+  numero_bombona: string;
+  peso_kg: number;
+}
+
 // Dados que a tela de Registrar alimentação precisa enviar pra salvar um
 // registro novo. `id` e `registrado_em` ficam por conta do banco.
+//
+// `bombonas` (Sprint A, item 3) substitui o peso único digitado direto:
+// quando presente (e não vazio), `peso_kg` é a soma calculada no cliente
+// e o salvamento passa pela RPC registrar_alimentacao_com_bombonas (ver
+// lib/patio.ts, salvarRegistroAlimentacaoComBombonas) — peso_kg e
+// bombonas têm que ficar coerentes entre si, por isso a tela sempre
+// recalcula peso_kg a partir das linhas antes de salvar. Itens já
+// enfileirados offline antes desta sprint não têm `bombonas` (formato
+// antigo) e continuam sendo salvos como registro único, sem linhas
+// filhas — sem retroativo.
 export interface NovoRegistroAlimentacao {
   parceiro_id: string;
   caixa_id: string;
@@ -123,6 +142,7 @@ export interface NovoRegistroAlimentacao {
   // Preenchido quando a tela é aberta a partir de um link da Agenda
   // (evento tipo "atividade") — ver lib/agenda.ts e migration 20260826120000.
   evento_agenda_id?: string | null;
+  bombonas?: BombonaDaColeta[];
 }
 
 // Projeção mínima de registros_alimentacao usada pela tela Ver caixas pra
@@ -162,6 +182,13 @@ export type TipoManejo = "capina_seletiva" | "adubacao" | "poda" | "raleamento" 
 // depois do insert: em adubação/capina vem auto-preenchido com todos os
 // plantios ativos do canteiro (sem passo extra na tela); em poda/
 // raleamento vem da seleção manual feita na tela (ver handoff, seção 3.9).
+//
+// tipo_carrinho_id/quantidade_carrinhos/peso_kg_calculado (Sprint A, item
+// 2) são opcionais — só preenchidos quando a pessoa usou carrinho de mão
+// pra aplicar composto/poda retirada da caixa. peso_kg_calculado é
+// snapshot (quantidade × peso_estimado_kg no momento do registro — não
+// recalcula se o peso do tipo mudar depois), calculado no cliente antes do
+// insert (ver lib/carrinhos.ts, calcularPesoCarrinho).
 export interface NovoRegistroManejo {
   canteiro_id: string;
   tipo_manejo: TipoManejo;
@@ -169,6 +196,68 @@ export interface NovoRegistroManejo {
   foto_url?: string | null;
   evento_agenda_id?: string | null;
   plantioIds?: string[];
+  tipo_carrinho_id?: string | null;
+  quantidade_carrinhos?: number | null;
+  peso_kg_calculado?: number | null;
+}
+
+// -----------------------------------------------------------------------------
+// Carrinho de mão — Sprint A, item 2 (SPRINT_A_REGISTRO_SIMPLIFICADO_ETAPA2.md,
+// seção 6). Unidade de medida de composto/poda retirada da caixa, usada em
+// manejo de canteiro e no esvaziamento de caixa (item 4). Tabela de
+// referência editável pela coordenação/consultor — "inativo" só some das
+// opções de registro novo, nunca é apagado (pode estar referenciado por
+// registros antigos).
+// -----------------------------------------------------------------------------
+
+export interface TipoCarrinho {
+  id: string;
+  nome: string;
+  peso_estimado_kg: number;
+  ativo: boolean;
+  atualizado_em: string;
+}
+
+export interface NovoTipoCarrinho {
+  nome: string;
+  peso_estimado_kg: number;
+}
+
+// -----------------------------------------------------------------------------
+// Esvaziamento de caixa — Sprint A, item 4 (SPRINT_A_REGISTRO_SIMPLIFICADO_ETAPA2.md,
+// seção 8). Acontece depois do descanso da caixa; o composto retirado vai
+// sempre pra mesma área de descanso ao ar livre (sem campo de destino) e é
+// contabilizado em carrinhos — peso snapshot, mesmo espírito do carrinho
+// de mão em manejo. Desde 01/10/2026 (decisão do Thiago) só
+// Coordenação/Consultor registram, e o esvaziamento tira a caixa do
+// descanso: ela volta a "ativa" ou vai pra "desativada" (manutenção),
+// escolhido na hora — tudo via RPC registrar_esvaziamento_caixa, que
+// também calcula o peso no banco.
+// -----------------------------------------------------------------------------
+
+export interface RegistroEsvaziamentoCaixa {
+  id: string;
+  caixa_id: string;
+  tipo_carrinho_id: string;
+  quantidade_carrinhos: number;
+  peso_kg_calculado: number;
+  observacao: string | null;
+  registrado_por: string | null;
+  registrado_em: string;
+  evento_agenda_id: string | null;
+}
+
+// Status da caixa depois do esvaziamento — o RPC só aceita esses dois.
+export type StatusCaixaPosEsvaziamento = Extract<StatusCaixa, "ativa" | "desativada">;
+
+// Sem peso: o RPC calcula a partir do tipo de carrinho × quantidade.
+export interface NovoRegistroEsvaziamentoCaixa {
+  caixa_id: string;
+  tipo_carrinho_id: string;
+  quantidade_carrinhos: number;
+  novo_status: StatusCaixaPosEsvaziamento;
+  observacao?: string | null;
+  evento_agenda_id?: string | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -460,6 +549,84 @@ export interface NovoEventoAgenda {
   data_fim?: string | null;
   turno?: TurnoDia | null;
   membro_equipe_id?: string | null;
+}
+
+// -----------------------------------------------------------------------------
+// Planejamento semanal (Sprint A, item 5 —
+// SPRINT_A_REGISTRO_SIMPLIFICADO_ETAPA2.md, seção 9). Checklist por dia +
+// turno, texto livre, sem estrutura rica — mesmo espírito do planejamento
+// que já circula no WhatsApp. `turno` aqui só tem 2 valores (sem
+// "dia_todo", diferente de TurnoDia da Agenda) porque espelha
+// relatorios_turno.turno, cujo check constraint é só ('manha', 'tarde').
+// -----------------------------------------------------------------------------
+
+export type TurnoPlanejamento = "manha" | "tarde";
+
+export interface ItemPlanejamentoSemanal {
+  id: string;
+  data: string;
+  turno: TurnoPlanejamento;
+  descricao: string;
+  criado_por: string | null;
+  criado_em: string;
+}
+
+export interface NovoItemPlanejamentoSemanal {
+  data: string;
+  turno: TurnoPlanejamento;
+  descricao: string;
+}
+
+// -----------------------------------------------------------------------------
+// Relatório do Turno — Sprint A, item 6 (SPRINT_A_REGISTRO_SIMPLIFICADO_ETAPA2.md,
+// seção 11). Peça central: um único relatório por (data, turno),
+// compartilhado por quem estiver no turno. Substitui o formulário-por-
+// atividade como ponto de entrada do dia a dia, sem remover as telas
+// existentes — o relatório reaproveita os sub-formulários (ver
+// lib/relatorio-turno.ts).
+// -----------------------------------------------------------------------------
+
+export type TipoRegistroRelatorio = "compostagem" | "canteiro" | "caixa" | "ronda" | "outro";
+export type OrigemItemRelatorio = "planejada" | "extra";
+
+export interface RelatorioTurno {
+  id: string;
+  data: string;
+  turno: TurnoPlanejamento;
+  evento_agenda_id: string | null;
+  criado_por: string | null;
+  criado_em: string;
+  fechado_em: string | null;
+}
+
+// `tipo_registro` começa nulo nos itens vindos do planejamento (a tabela
+// planejamento_semanal_itens não tem esse campo) e nos extras recém-
+// criados — é escolhido "de leve", na hora que a pessoa aperta "Registrar
+// dado" por esse item (ver escolherTipoRegistro em lib/relatorio-turno.ts).
+// Uma vez `ronda`/`outro`, o item não abre mais sub-formulário nenhum (só
+// texto + feito/não feito). `registro_id_gerado` presente = este item já
+// gerou um registro; "Registrar dado" de novo cria um item IRMÃO em vez de
+// sobrescrever (ver criarItemIrmao) — um item tem no máximo um registro.
+export interface ItemRelatorioTurno {
+  id: string;
+  relatorio_turno_id: string;
+  descricao: string;
+  origem: OrigemItemRelatorio;
+  feito: boolean | null;
+  motivo_nao_feito: string | null;
+  tipo_registro: TipoRegistroRelatorio | null;
+  tabela_registro_gerado: string | null;
+  registro_id_gerado: string | null;
+  registrado_por: string | null;
+  criado_em: string;
+}
+
+// Projeção mínima de membros_equipe usada pra mostrar a equipe do turno no
+// cabeçalho do relatório (ver buscarEquipeDoTurno).
+export interface MembroDoTurno {
+  id: string;
+  nome: string;
+  papel: PapelEquipe;
 }
 
 // Config do geofence usado por Meu Ponto — ver migration 20260826090000.

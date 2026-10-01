@@ -18,13 +18,15 @@
 // registro, pra não duplicar essa UI a cada fluxo novo.
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
 import { iconeTipoCanteiro, salvarRegistroManejo } from "@/lib/horta";
 import { listarPlantiosAtivosPorCanteiro } from "@/lib/plantios";
+import { calcularPesoCarrinho, listarTiposCarrinho } from "@/lib/carrinhos";
+import { vincularRegistroAoItem } from "@/lib/relatorio-turno";
 import { criarFilaOffline } from "@/lib/fila-offline";
-import type { Canteiro, NovoRegistroManejo, PlantioComCultura, TipoManejo } from "@/lib/types";
+import type { Canteiro, NovoRegistroManejo, PlantioComCultura, TipoCarrinho, TipoManejo } from "@/lib/types";
 import {
   BotaoAvancar,
   BotaoGrande,
@@ -59,15 +61,23 @@ function exigeSelecaoDePlantios(tipo: TipoManejo | null): boolean {
 // pra Client Components) — por isso o export default vira só um wrapper,
 // ver ManejoPage no fim do arquivo.
 function ManejoConteudo() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // Preenchido quando a tela é aberta a partir de um link da Agenda
   // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
-  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+  const eventoAgendaId = searchParams.get("evento_agenda_id");
+  // Preenchidos quando a tela é aberta a partir do Relatório do Turno
+  // (Sprint A, item 6, tipo_registro=canteiro → Manejo) — ver
+  // lib/relatorio-turno.ts, hrefSubFormulario.
+  const relatorioItemId = searchParams.get("relatorio_item");
+  const voltarHref = searchParams.get("voltar");
 
   const [passo, setPasso] = useState(1);
 
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [canteiros, setCanteiros] = useState<Canteiro[]>([]);
+  const [tiposCarrinho, setTiposCarrinho] = useState<TipoCarrinho[]>([]);
 
   const [canteiroId, setCanteiroId] = useState<string | null>(null);
   const [plantiosCanteiro, setPlantiosCanteiro] = useState<PlantioComCultura[]>([]);
@@ -75,6 +85,9 @@ function ManejoConteudo() {
   const [plantioIdsSelecionados, setPlantioIdsSelecionados] = useState<string[]>([]);
   const [fotos, setFotos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
+  // Carrinho de mão (Sprint A, item 2) — opcional, um tipo por registro.
+  const [tipoCarrinhoId, setTipoCarrinhoId] = useState<string | null>(null);
+  const [quantidadeCarrinhos, setQuantidadeCarrinhos] = useState("");
 
   const [salvando, setSalvando] = useState(false);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
@@ -85,8 +98,14 @@ function ManejoConteudo() {
     let cancelado = false;
     async function carregar() {
       try {
-        const lista = await listarCanteiros();
-        if (!cancelado) setCanteiros(lista);
+        const [listaCanteiros, listaCarrinhos] = await Promise.all([
+          listarCanteiros(),
+          listarTiposCarrinho(),
+        ]);
+        if (!cancelado) {
+          setCanteiros(listaCanteiros);
+          setTiposCarrinho(listaCarrinhos);
+        }
       } catch {
         if (!cancelado) {
           setErroCarregamento(
@@ -168,6 +187,9 @@ function ManejoConteudo() {
       observacao: observacao.trim() ? observacao.trim() : null,
       evento_agenda_id: eventoAgendaId,
       plantioIds,
+      tipo_carrinho_id: tipoCarrinhoId,
+      quantidade_carrinhos: quantidadeCarrinhos.trim() ? Number(quantidadeCarrinhos) : null,
+      peso_kg_calculado: pesoCarrinhoCalculado,
     };
 
     try {
@@ -180,10 +202,31 @@ function ManejoConteudo() {
           // segue sem as extras — a capa já foi salva com o registro.
         }
       }
+
+      // Aberta a partir do Relatório do Turno (Sprint A, item 6): vincula
+      // e volta pro relatório em vez da tela de sucesso daqui.
+      if (relatorioItemId) {
+        try {
+          await vincularRegistroAoItem(relatorioItemId, "registros_manejo", registroId);
+        } catch {
+          // segue sem o vínculo — o registro já está salvo.
+        }
+        if (voltarHref) {
+          router.push(decodeURIComponent(voltarHref));
+          return;
+        }
+      }
       setResultado("ok");
     } catch {
       filaOffline.enfileirar(registro);
       setPendentesOffline(filaOffline.contar());
+      // Enfileirado sem internet: sem id pra vincular ao item do
+      // Relatório do Turno (limitação conhecida, seção 11e) — volta pro
+      // relatório mesmo assim, o item fica sem marcar.
+      if (relatorioItemId && voltarHref) {
+        router.push(decodeURIComponent(voltarHref));
+        return;
+      }
       setResultado("offline");
     } finally {
       setSalvando(false);
@@ -198,12 +241,19 @@ function ManejoConteudo() {
     setPlantioIdsSelecionados([]);
     setFotos([]);
     setObservacao("");
+    setTipoCarrinhoId(null);
+    setQuantidadeCarrinhos("");
     setResultado(null);
     setErroSalvar(null);
   }
 
   const canteiroSelecionado = canteiros.find((c) => c.id === canteiroId);
   const tipoSelecionado = TIPOS_MANEJO.find((t) => t.valor === tipoManejo);
+  const tipoCarrinhoSelecionado = tiposCarrinho.find((t) => t.id === tipoCarrinhoId);
+  const pesoCarrinhoCalculado =
+    tipoCarrinhoSelecionado && quantidadeCarrinhos.trim() && !Number.isNaN(Number(quantidadeCarrinhos))
+      ? calcularPesoCarrinho(Number(quantidadeCarrinhos), tipoCarrinhoSelecionado.peso_estimado_kg)
+      : null;
 
   if (carregando) {
     return (
@@ -345,6 +395,48 @@ function ManejoConteudo() {
             className="mt-4 min-h-24 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
           />
 
+          {tiposCarrinho.length > 0 && (
+            <div className="mt-4 rounded-xl border-2 border-dashed border-zinc-400 bg-[#f1efe6] p-3">
+              <p className="mb-2 text-xs font-bold text-zinc-700">
+                Usou carrinho de mão pra levar composto/poda pro canteiro? (opcional)
+              </p>
+              <div className="mb-2 grid grid-cols-2 gap-2">
+                {tiposCarrinho.map((tc) => (
+                  <button
+                    key={tc.id}
+                    type="button"
+                    onClick={() => setTipoCarrinhoId(tc.id === tipoCarrinhoId ? null : tc.id)}
+                    className={[
+                      "rounded-lg border-2 px-3 py-2 text-left text-xs font-semibold",
+                      tc.id === tipoCarrinhoId
+                        ? "border-[#2e6b3e] bg-[#eaf3ea] text-[#2e6b3e]"
+                        : "border-zinc-300 bg-white text-zinc-700",
+                    ].join(" ")}
+                  >
+                    🛒 {tc.nome}
+                  </button>
+                ))}
+              </div>
+              {tipoCarrinhoId && (
+                <label className="block text-[11px] font-semibold text-zinc-600">
+                  Quantidade de carrinhos
+                  <input
+                    value={quantidadeCarrinhos}
+                    onChange={(e) => setQuantidadeCarrinhos(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="Ex.: 3"
+                    className="mt-1 w-full rounded-lg border-2 border-zinc-300 p-2 text-sm"
+                  />
+                </label>
+              )}
+              {pesoCarrinhoCalculado !== null && (
+                <p className="mt-2 text-[11px] text-zinc-600">
+                  ≈ {pesoCarrinhoCalculado} kg ({quantidadeCarrinhos} × {tipoCarrinhoSelecionado?.peso_estimado_kg} kg)
+                </p>
+              )}
+            </div>
+          )}
+
           <BotaoAvancar onClick={() => irPara(5)} />
         </Passo>
       )}
@@ -373,7 +465,17 @@ function ManejoConteudo() {
               valor={fotos.length === 0 ? "sem foto" : `${fotos.length} anexada(s)`}
               onEditar={() => irPara(4)}
             />
-            <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(4)} ultima />
+            <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(4)} />
+            <LinhaResumo
+              rotulo="Carrinho de mão"
+              valor={
+                tipoCarrinhoSelecionado && pesoCarrinhoCalculado !== null
+                  ? `${quantidadeCarrinhos} ${tipoCarrinhoSelecionado.nome.toLowerCase()}(s) ≈ ${pesoCarrinhoCalculado} kg`
+                  : "não usou"
+              }
+              onEditar={() => irPara(4)}
+              ultima
+            />
           </div>
 
           {erroSalvar && <p className="mt-3 text-center text-xs text-red-700">{erroSalvar}</p>}

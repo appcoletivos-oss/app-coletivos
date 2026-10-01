@@ -14,9 +14,10 @@
 // melhoria futura possível, não descartada.
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { listarCaixas, rotuloStatusCaixa, salvarRegistroAnaliseSensorial } from "@/lib/patio";
+import { vincularRegistroAoItem } from "@/lib/relatorio-turno";
 import { criarFilaOffline } from "@/lib/fila-offline";
 import type { Caixa, NovoRegistroAnaliseSensorial } from "@/lib/types";
 import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
@@ -38,9 +39,16 @@ const filaOffline = criarFilaOffline<NovoRegistroAnaliseSensorial>(
 // pra Client Components) — por isso o export default vira só um wrapper,
 // ver AnaliseSensorialPage no fim do arquivo.
 function AnaliseSensorialConteudo() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // Preenchido quando a tela é aberta a partir de um link da Agenda
   // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
-  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+  const eventoAgendaId = searchParams.get("evento_agenda_id");
+  // Preenchidos quando a tela é aberta a partir do Relatório do Turno
+  // (Sprint A, item 6, tipo_registro=caixa → Análise sensorial) — ver
+  // lib/relatorio-turno.ts, hrefSubFormulario.
+  const relatorioItemId = searchParams.get("relatorio_item");
+  const voltarHref = searchParams.get("voltar");
 
   const [passo, setPasso] = useState(1);
 
@@ -108,11 +116,32 @@ function AnaliseSensorialConteudo() {
     };
 
     try {
-      await salvarRegistroAnaliseSensorial(registro);
+      const registroId = await salvarRegistroAnaliseSensorial(registro);
+
+      // Aberta a partir do Relatório do Turno (Sprint A, item 6): vincula
+      // e volta pro relatório em vez da tela de sucesso daqui.
+      if (relatorioItemId) {
+        try {
+          await vincularRegistroAoItem(relatorioItemId, "registros_analise_sensorial", registroId);
+        } catch {
+          // segue sem o vínculo — o registro já está salvo.
+        }
+        if (voltarHref) {
+          router.push(decodeURIComponent(voltarHref));
+          return;
+        }
+      }
       setResultado("ok");
     } catch {
       filaOffline.enfileirar(registro);
       setPendentesOffline(filaOffline.contar());
+      // Enfileirado sem internet: sem id pra vincular ao item do
+      // Relatório do Turno (limitação conhecida, seção 11e) — volta pro
+      // relatório mesmo assim, o item fica sem marcar.
+      if (relatorioItemId && voltarHref) {
+        router.push(decodeURIComponent(voltarHref));
+        return;
+      }
       setResultado("offline");
     } finally {
       setSalvando(false);

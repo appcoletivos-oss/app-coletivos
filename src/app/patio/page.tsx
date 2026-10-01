@@ -27,6 +27,13 @@ export default function PatioPage() {
 
       <OcorrenciasBanner />
 
+      <Link
+        href="/patio/relatorio-turno"
+        className="mb-4 block rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-4 text-center text-sm font-bold text-[#2e6b3e]"
+      >
+        📋 Relatório do turno
+      </Link>
+
       <div className="grid grid-cols-2 gap-3">
         {BLOCOS.map((bloco) => (
           <Link

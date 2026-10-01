@@ -14,18 +14,20 @@ import { useEffect, useState } from "react";
 import { obterMeuMembro } from "@/lib/auth";
 import { AbaCaixas } from "./aba-caixas";
 import { AbaCanteiros } from "./aba-canteiros";
+import { AbaCarrinhos } from "./aba-carrinhos";
 import { AbaCulturas } from "./aba-culturas";
 import { AbaEquipe } from "./aba-equipe";
 import { AbaLocalTrabalho } from "./aba-local-trabalho";
 import { AbaParceiros } from "./aba-parceiros";
 
-type Aba = "parceiros" | "canteiros" | "culturas" | "caixas" | "equipe" | "local";
+type Aba = "parceiros" | "canteiros" | "culturas" | "caixas" | "carrinhos" | "equipe" | "local";
 
 const ABAS: { valor: Aba; rotulo: string }[] = [
   { valor: "parceiros", rotulo: "Parceiros" },
   { valor: "canteiros", rotulo: "Canteiros" },
   { valor: "culturas", rotulo: "Culturas" },
   { valor: "caixas", rotulo: "Caixas" },
+  { valor: "carrinhos", rotulo: "Carrinhos" },
   { valor: "equipe", rotulo: "Equipe" },
   { valor: "local", rotulo: "Local de trabalho" },
 ];
@@ -108,6 +110,7 @@ export default function CadastroPage() {
       {aba === "canteiros" && <AbaCanteiros />}
       {aba === "culturas" && <AbaCulturas />}
       {aba === "caixas" && <AbaCaixas />}
+      {aba === "carrinhos" && <AbaCarrinhos />}
       {aba === "equipe" && <AbaEquipe />}
       {aba === "local" && <AbaLocalTrabalho />}
     </main>

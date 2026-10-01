@@ -14,12 +14,13 @@
 // "Quem registrou" e "data" nunca são perguntados — vêm da sessão de
 // login e do relógio do aparelho, mesmo espírito de sempre.
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
 import { iconeTipoCanteiro, salvarRegistroColheita } from "@/lib/horta";
 import { listarCulturasAtivas } from "@/lib/culturas";
 import { criarPlantio, listarPlantiosAtivosPorCanteiro, marcarStatusPlantio } from "@/lib/plantios";
+import { vincularRegistroAoItem } from "@/lib/relatorio-turno";
 import { criarFilaOffline } from "@/lib/fila-offline";
 import type { Canteiro, Cultura, NovoRegistroColheita, PlantioComCultura } from "@/lib/types";
 import {
@@ -44,9 +45,16 @@ const filaOffline = criarFilaOffline<NovoRegistroColheita>(
 // pra Client Components) — por isso o export default vira só um wrapper,
 // ver RegistrarColheitaPage no fim do arquivo.
 function RegistrarColheitaConteudo() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   // Preenchido quando a tela é aberta a partir de um link da Agenda
   // (evento tipo "atividade") — ver lib/agenda.ts, LINKS_REGISTRO_ATIVIDADE.
-  const eventoAgendaId = useSearchParams().get("evento_agenda_id");
+  const eventoAgendaId = searchParams.get("evento_agenda_id");
+  // Preenchidos quando a tela é aberta a partir do Relatório do Turno
+  // (Sprint A, item 6, tipo_registro=canteiro → Colheita) — ver
+  // lib/relatorio-turno.ts, hrefSubFormulario.
+  const relatorioItemId = searchParams.get("relatorio_item");
+  const voltarHref = searchParams.get("voltar");
 
   const [passo, setPasso] = useState(1);
 
@@ -236,10 +244,31 @@ function RegistrarColheitaConteudo() {
           // dá pra fechar depois manualmente pelo Mapa. Não trava a tela.
         }
       }
+
+      // Aberta a partir do Relatório do Turno (Sprint A, item 6): vincula
+      // e volta pro relatório em vez da tela de sucesso daqui.
+      if (relatorioItemId) {
+        try {
+          await vincularRegistroAoItem(relatorioItemId, "registros_colheita", registroId);
+        } catch {
+          // segue sem o vínculo — o registro já está salvo.
+        }
+        if (voltarHref) {
+          router.push(decodeURIComponent(voltarHref));
+          return;
+        }
+      }
       setResultado("ok");
     } catch {
       filaOffline.enfileirar(registro);
       setPendentesOffline(filaOffline.contar());
+      // Enfileirado sem internet: sem id pra vincular ao item do
+      // Relatório do Turno (limitação conhecida, seção 11e) — volta pro
+      // relatório mesmo assim, o item fica sem marcar.
+      if (relatorioItemId && voltarHref) {
+        router.push(decodeURIComponent(voltarHref));
+        return;
+      }
       setResultado("offline");
     } finally {
       setSalvando(false);

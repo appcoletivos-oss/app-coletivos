@@ -18,6 +18,20 @@ import type {
   TipoParceiro,
 } from "./types";
 
+// Erro de validação de dado (não de conectividade) devolvido pela RPC
+// registrar_alimentacao_com_bombonas (migration 20261001020000) — bombona
+// sem número, com peso negativo/nulo, ou lista vazia. Distinta de um erro
+// de rede: não faz sentido guardar isso na fila offline pra "tentar de
+// novo depois", porque vai falhar do mesmo jeito até a pessoa corrigir os
+// dados na tela (ver salvarRegistroAlimentacaoComBombonas, e o catch em
+// registrar-alimentacao/page.tsx).
+export class ErroValidacaoBombonas extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ErroValidacaoBombonas";
+  }
+}
+
 // Texto pro status de uma caixa quando ela não está em uso normal — usado
 // tanto no seletor de caixa de Registrar alimentação (como `title` de um
 // botão desabilitado) quanto nos badges de Ver caixas. Devolve null pra
@@ -112,23 +126,91 @@ export function resumoAlimentacaoPorCaixa(
   return mapa;
 }
 
-// Salva um registro de alimentação e devolve o id da linha criada (usado
-// pra anexar fotos extras em fotos_registro — ver salvarFotosExtras
-// abaixo). Lança erro se não houver internet ou se a sessão não estiver
-// autenticada — quem chama decide o que fazer (ex.: guardar na fila
-// offline). `registrado_por` é preenchido pelo banco (default auth.uid(),
-// ver migration 20260827120000).
+// Salva um registro de alimentação "simples" (peso único, sem linhas de
+// bombona) e devolve o id da linha criada (usado pra anexar fotos extras
+// em fotos_registro — ver salvarFotosExtras abaixo). Lança erro se não
+// houver internet ou se a sessão não estiver autenticada — quem chama
+// decide o que fazer (ex.: guardar na fila offline). `registrado_por` é
+// preenchido pelo banco (default auth.uid(), ver migration 20260827120000).
+//
+// Monta o payload explicitamente (em vez de `.insert(registro)` direto)
+// porque NovoRegistroAlimentacao ganhou o campo `bombonas` (Sprint A, item
+// 3), que não é coluna de registros_alimentacao — só usado pela função
+// irmã abaixo. Continua existindo pra manter funcionando o formato antigo
+// da fila offline (itens enfileirados antes desta sprint, sem bombonas).
 export async function salvarRegistroAlimentacao(
   registro: NovoRegistroAlimentacao,
 ): Promise<string> {
   await requerSessao();
   const { data, error } = await supabase
     .from("registros_alimentacao")
-    .insert(registro)
+    .insert({
+      parceiro_id: registro.parceiro_id,
+      caixa_id: registro.caixa_id,
+      peso_kg: registro.peso_kg,
+      tipo_residuo: registro.tipo_residuo,
+      temperatura_c: registro.temperatura_c ?? null,
+      foto_url: registro.foto_url ?? null,
+      observacao: registro.observacao ?? null,
+      evento_agenda_id: registro.evento_agenda_id ?? null,
+    })
     .select("id")
     .single();
   if (error) throw error;
   return data.id;
+}
+
+// -----------------------------------------------------------------------------
+// Bombonas por coleta (Sprint A, item 3 —
+// SPRINT_A_REGISTRO_SIMPLIFICADO_ETAPA2.md, seção 7). Salva o registro pai
+// e as linhas de bombona numa transação só, via RPC
+// registrar_alimentacao_com_bombonas (migration 20261001020000) — ver o
+// comentário dessa função no SQL pro porquê (registros_alimentacao não
+// tem policy de DELETE).
+// -----------------------------------------------------------------------------
+
+// Chama a RPC. A função no banco valida (lista vazia, bombona sem número,
+// peso negativo/nulo) e levanta `raise exception` nesses casos — Postgres
+// devolve isso com SQLSTATE 'P0001' (o código padrão de "raise exception"
+// sem código próprio), que é o sinal usado aqui pra distinguir "dado
+// inválido" de "sem internet"/outro erro. A mensagem já vem em português
+// simples (ver migration), por isso é repassada direto pra tela.
+export async function registrarAlimentacaoComBombonas(
+  registro: NovoRegistroAlimentacao,
+): Promise<string> {
+  await requerSessao();
+  const { data, error } = await supabase.rpc("registrar_alimentacao_com_bombonas", {
+    p_parceiro_id: registro.parceiro_id,
+    p_caixa_id: registro.caixa_id,
+    p_tipo_residuo: registro.tipo_residuo,
+    p_bombonas: registro.bombonas ?? [],
+    p_temperatura_c: registro.temperatura_c ?? null,
+    p_foto_url: registro.foto_url ?? null,
+    p_observacao: registro.observacao ?? null,
+    p_evento_agenda_id: registro.evento_agenda_id ?? null,
+  });
+
+  if (error) {
+    if (error.code === "P0001") throw new ErroValidacaoBombonas(error.message);
+    throw error;
+  }
+  return data as string;
+}
+
+// Ponto único de salvamento usado pela tela e pela fila offline
+// (filaOffline.tentarEnviar): decide sozinho entre as duas funções acima a
+// partir do formato do registro — itens com `bombonas` preenchido (coleta
+// nova, com linhas) vão pela RPC; itens sem (coleta simples, ou formato
+// antigo já enfileirado no celular antes desta sprint) vão pelo insert
+// direto. Assim o retry automático da fila também funciona pros dois
+// formatos, sem duplicar essa decisão em cada tela.
+export async function salvarRegistroAlimentacaoComBombonas(
+  registro: NovoRegistroAlimentacao,
+): Promise<string> {
+  if (registro.bombonas && registro.bombonas.length > 0) {
+    return registrarAlimentacaoComBombonas(registro);
+  }
+  return salvarRegistroAlimentacao(registro);
 }
 
 // -----------------------------------------------------------------------------
@@ -188,15 +270,23 @@ export async function enviarFotoRegistro(
 // -----------------------------------------------------------------------------
 
 // Salva um registro de análise sensorial (visão, olfato, tato — texto
-// livre). Lança erro se não houver internet ou sessão autenticada — quem
-// chama decide o que fazer (ex.: fila offline). `registrado_por` vem do
-// banco (default auth.uid()).
+// livre) e devolve o id da linha criada — passa a devolver (antes era
+// `Promise<void>`) porque o Relatório do Turno (Sprint A, item 6) precisa
+// do id pra vincular ao item (ver vincularRegistroAoItem em
+// lib/relatorio-turno.ts). Lança erro se não houver internet ou sessão
+// autenticada — quem chama decide o que fazer (ex.: fila offline).
+// `registrado_por` vem do banco (default auth.uid()).
 export async function salvarRegistroAnaliseSensorial(
   registro: NovoRegistroAnaliseSensorial,
-): Promise<void> {
+): Promise<string> {
   await requerSessao();
-  const { error } = await supabase.from("registros_analise_sensorial").insert(registro);
+  const { data, error } = await supabase
+    .from("registros_analise_sensorial")
+    .insert(registro)
+    .select("id")
+    .single();
   if (error) throw error;
+  return data.id;
 }
 
 // -----------------------------------------------------------------------------
