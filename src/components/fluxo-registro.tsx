@@ -10,7 +10,7 @@
 // ainda define seus próprios passos, campos e regras de negócio.
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 export function TelaBase({
   titulo,
@@ -121,6 +121,152 @@ export function Stepper({
       >
         +
       </button>
+    </div>
+  );
+}
+
+// Campo numérico de peso (Etapa 1, item 1 — handoff "Registro
+// simplificado"). Substitui o Stepper de +/- nos dois lugares que pedem
+// peso digitado (Registrar compostagem, Registrar colheita): digitar é
+// mais rápido que clicar dezenas de vezes num incremento de 0,5kg.
+// `Stepper` continua existindo — ainda é usado pra temperatura.
+//
+// Mantém o texto digitado em estado próprio (não deriva direto de
+// `valor`) pra não atrapalhar a pessoa enquanto ela ainda está no meio de
+// digitar a vírgula decimal (ex.: "12," viraria "12" se o campo
+// re-renderizasse a cada tecla a partir do number já convertido).
+export function CampoPeso({
+  valor,
+  onMudar,
+  autoFocus = false,
+}: {
+  valor: number;
+  onMudar: (novo: number) => void;
+  autoFocus?: boolean;
+}) {
+  const [texto, setTexto] = useState(() => formatarPeso(valor));
+
+  return (
+    <div className="flex items-center justify-center gap-2 rounded-xl border-2 border-zinc-800 bg-[#f1efe6] py-6">
+      <input
+        type="text"
+        inputMode="decimal"
+        autoFocus={autoFocus}
+        value={texto}
+        onChange={(e) => {
+          // Aceita dígitos, vírgula e ponto digitados; qualquer outra
+          // tecla (letra, símbolo) é ignorada em vez de travar o campo.
+          const bruto = e.target.value.replace(/[^0-9,.]/g, "");
+          setTexto(bruto);
+          const numero = Number(bruto.replace(",", "."));
+          if (!Number.isNaN(numero)) onMudar(numero);
+        }}
+        onBlur={() => setTexto(formatarPeso(valor))}
+        className="w-24 border-b-2 border-zinc-800 bg-transparent text-center text-3xl font-bold tabular-nums text-zinc-900 focus:outline-none"
+      />
+      <span className="text-lg font-bold text-zinc-600">kg</span>
+    </div>
+  );
+}
+
+function formatarPeso(valor: number): string {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+// Seletor de fotos múltiplas (Etapa 1, item 2 — handoff "Registro
+// simplificado"). Substitui o padrão antigo de "uma foto só" repetido em
+// cada tela de registro: aceita câmera e galeria (com seleção múltipla de
+// uma vez na galeria). Quem chama decide o que fazer com a lista de
+// arquivos — a primeira vira a capa (`foto_url` da tabela original), as
+// demais viram linhas em `fotos_registro` (ver lib/patio.ts,
+// salvarFotosExtras).
+export function SeletorFotos({
+  fotos,
+  onMudar,
+  obrigatoria = false,
+}: {
+  fotos: File[];
+  onMudar: (novas: File[]) => void;
+  obrigatoria?: boolean;
+}) {
+  const previews = useMemo(() => fotos.map((f) => URL.createObjectURL(f)), [fotos]);
+  useEffect(() => {
+    return () => {
+      previews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [previews]);
+
+  function adicionar(lista: FileList | null) {
+    if (!lista || lista.length === 0) return;
+    onMudar([...fotos, ...Array.from(lista)]);
+  }
+
+  function remover(indice: number) {
+    onMudar(fotos.filter((_, i) => i !== indice));
+  }
+
+  return (
+    <div>
+      {previews.length > 0 && (
+        <div className="mb-3 flex flex-wrap justify-center gap-2">
+          {previews.map((src, i) => (
+            <div key={src} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={`Foto ${i + 1}`}
+                className="h-16 w-16 rounded-lg border-2 border-zinc-800 object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => remover(i)}
+                aria-label={`Remover foto ${i + 1}`}
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-700 text-[10px] font-bold text-white"
+              >
+                ✕
+              </button>
+              {i === 0 && (
+                <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-[#2e6b3e] px-1.5 py-0.5 text-[8px] font-bold text-white">
+                  capa
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <label className="flex-1 cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-4 text-center">
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              adicionar(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <span className="text-xs font-bold text-zinc-800">📷 Câmera</span>
+        </label>
+        <label className="flex-1 cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-4 text-center">
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              adicionar(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <span className="text-xs font-bold text-zinc-800">🖼️ Galeria</span>
+        </label>
+      </div>
+
+      {obrigatoria && fotos.length === 0 && (
+        <span className="mt-1 block text-center text-[10px] text-red-800">obrigatório</span>
+      )}
     </div>
   );
 }

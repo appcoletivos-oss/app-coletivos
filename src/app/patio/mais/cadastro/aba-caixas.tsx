@@ -7,13 +7,21 @@
 // circulação). O campo `status` já existia desde a migration original.
 
 import { useEffect, useState } from "react";
-import { atualizarCaixa, criarCaixa, desativarCaixa, listarCaixas, proximoNumeroCaixa } from "@/lib/patio";
+import {
+  atualizarCaixa,
+  criarCaixa,
+  desativarCaixa,
+  listarCaixas,
+  moverCaixaParaDescanso,
+  proximoNumeroCaixa,
+} from "@/lib/patio";
 import type { Caixa, StatusCaixa } from "@/lib/types";
 
 const STATUS: { valor: StatusCaixa; rotulo: string }[] = [
   { valor: "ativa", rotulo: "Ativa" },
   { valor: "nao_ativada", rotulo: "Não ativada" },
   { valor: "nova", rotulo: "Nova, aguardando" },
+  { valor: "descanso", rotulo: "Em descanso" },
   { valor: "desativada", rotulo: "Desativada" },
 ];
 
@@ -117,6 +125,11 @@ export function AbaCaixas() {
                 </div>
                 <p className="text-[11px] text-zinc-500">{c.capacidade_kg} kg de capacidade</p>
                 {c.observacoes && <p className="mt-1 text-[11px] text-zinc-500">{c.observacoes}</p>}
+                {c.status === "descanso" && c.data_inicio_descanso && (
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Em descanso desde {new Date(c.data_inicio_descanso).toLocaleDateString("pt-BR")}
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -125,6 +138,18 @@ export function AbaCaixas() {
                   >
                     ✏️ Editar
                   </button>
+                  {c.status !== "descanso" && c.status !== "desativada" && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await moverCaixaParaDescanso(c.id);
+                        await carregar();
+                      }}
+                      className="rounded-full border-2 border-amber-300 px-3 py-1 text-[11px] font-bold text-amber-800"
+                    >
+                      🌙 Mover pra descanso
+                    </button>
+                  )}
                   {c.status !== "desativada" && (
                     <button
                       type="button"

@@ -3,14 +3,15 @@ import { OcorrenciasBanner } from "./ocorrencias-banner";
 
 // Módulo 1 (Pátio de Compostagem). Os 6 blocos vêm do wireframe (estrutura
 // fechada, rodada 7) — "Compostagem" (Registrar alimentação), "Horta"
-// (Registrar colheita) e "Mais" (Cadastro) já têm tela real por trás; os
-// outros ainda são placeholder.
+// (Registrar colheita), "Mais" (Cadastro) e, desde a Etapa 1 do Registro
+// simplificado, "Venda" (Registrar doação de alimento) já têm tela real
+// por trás; "Agenda" idem.
 const BLOCOS = [
   { href: "/patio/compostagem", icone: "🌱", rotulo: "Compostagem", pronto: true },
   { href: "/patio/horta", icone: "🌻", rotulo: "Horta", pronto: true },
   { href: "/patio/meu-ponto", icone: "⏰", rotulo: "Meu Ponto", pronto: true },
   { href: "/patio/agenda", icone: "📅", rotulo: "Agenda", pronto: true },
-  { href: "#", icone: "📦", rotulo: "Venda", pronto: false },
+  { href: "/patio/venda", icone: "📦", rotulo: "Venda", pronto: true },
   { href: "/patio/mais", icone: "⚙️", rotulo: "Mais", pronto: true },
 ];
 

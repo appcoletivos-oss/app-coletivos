@@ -8,7 +8,7 @@
 // avisos_shopping junto). Ver claude/handoff-mais-pacote1.md, seção 2.
 
 import { useEffect, useState } from "react";
-import { enviarFotoRegistro } from "@/lib/patio";
+import { enviarFotoRegistro, salvarFotosExtras } from "@/lib/patio";
 import {
   contarOcorrenciasPendentes,
   criarOcorrencia,
@@ -16,7 +16,7 @@ import {
   resolverOcorrencia,
 } from "@/lib/ocorrencias";
 import type { CanalAviso, OcorrenciaAtipica } from "@/lib/types";
-import { TelaBase } from "@/components/fluxo-registro";
+import { SeletorFotos, TelaBase } from "@/components/fluxo-registro";
 
 const CANAIS: { valor: CanalAviso; rotulo: string }[] = [
   { valor: "whatsapp", rotulo: "WhatsApp" },
@@ -142,28 +142,30 @@ function FormOcorrencia({
   onSalvo: () => Promise<void>;
 }) {
   const [descricao, setDescricao] = useState("");
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
   const [virarAviso, setVirarAviso] = useState(false);
   const [canal, setCanal] = useState<CanalAviso>("whatsapp");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  function selecionarFoto(arquivo: File | null) {
-    setFoto(arquivo);
-    setFotoPreview((antigo) => {
-      if (antigo) URL.revokeObjectURL(antigo);
-      return arquivo ? URL.createObjectURL(arquivo) : null;
-    });
-  }
-
   async function salvar() {
-    if (!descricao.trim() || !foto) return;
+    if (!descricao.trim() || fotos.length === 0) return;
     setSalvando(true);
     setErro(null);
     try {
-      const fotoUrl = await enviarFotoRegistro(foto, "ocorrencia");
-      await criarOcorrencia({ descricao, foto_url: fotoUrl }, virarAviso ? { canal } : undefined);
+      const fotoUrl = await enviarFotoRegistro(fotos[0], "ocorrencia");
+      const ocorrencia = await criarOcorrencia(
+        { descricao, foto_url: fotoUrl },
+        virarAviso ? { canal } : undefined,
+      );
+      if (fotos.length > 1) {
+        try {
+          const extras = await Promise.all(fotos.slice(1).map((f) => enviarFotoRegistro(f, "ocorrencia")));
+          await salvarFotosExtras("ocorrencias_atipicas", ocorrencia.id, extras);
+        } catch {
+          // segue sem as extras — a capa já foi salva com o registro.
+        }
+      }
       await onSalvo();
     } catch {
       setErro("Não deu pra salvar agora. A foto é obrigatória — confira a internet e tente de novo.");
@@ -183,21 +185,9 @@ function FormOcorrencia({
         />
       </label>
 
-      <label className="mb-3 block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-white p-6 text-center">
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
-        />
-        {fotoPreview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
-        ) : (
-          <span className="text-sm font-bold text-zinc-800">📷 Foto (obrigatória)</span>
-        )}
-      </label>
+      <div className="mb-3">
+        <SeletorFotos fotos={fotos} onMudar={setFotos} obrigatoria />
+      </div>
 
       <label className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-zinc-700">
         <input
@@ -229,7 +219,7 @@ function FormOcorrencia({
       <div className="flex gap-2">
         <button
           type="button"
-          disabled={salvando || !descricao.trim() || !foto}
+          disabled={salvando || !descricao.trim() || fotos.length === 0}
           onClick={salvar}
           className="flex-1 rounded-lg bg-[#2e6b3e] py-2 text-xs font-bold text-white disabled:opacity-40"
         >

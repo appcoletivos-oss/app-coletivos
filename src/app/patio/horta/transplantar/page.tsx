@@ -12,11 +12,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
+import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
 import { iconeTipoCanteiro } from "@/lib/horta";
 import { buscarSaldoPlantio, listarPlantiosAtivosPorCanteiro, registrarTransplante } from "@/lib/plantios";
 import type { Canteiro, PlantioComCultura } from "@/lib/types";
-import { BotaoAvancar, BotaoGrande, LinhaResumo, Passo, PontosPasso, TelaBase } from "@/components/fluxo-registro";
+import {
+  BotaoAvancar,
+  BotaoGrande,
+  LinhaResumo,
+  Passo,
+  PontosPasso,
+  SeletorFotos,
+  TelaBase,
+} from "@/components/fluxo-registro";
 
 const TOTAL_PASSOS = 6;
 
@@ -35,8 +43,7 @@ export default function TransplantarPage() {
 
   const [canteiroDestinoId, setCanteiroDestinoId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState("");
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
 
   const [salvando, setSalvando] = useState(false);
@@ -87,14 +94,6 @@ export default function TransplantarPage() {
     setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
   }
 
-  function selecionarFoto(arquivo: File | null) {
-    setFoto(arquivo);
-    setFotoPreview((antigo) => {
-      if (antigo) URL.revokeObjectURL(antigo);
-      return arquivo ? URL.createObjectURL(arquivo) : null;
-    });
-  }
-
   const canteiroOrigem = canteiros.find((c) => c.id === canteiroOrigemId);
   const canteiroDestino = canteiros.find((c) => c.id === canteiroDestinoId);
 
@@ -104,22 +103,30 @@ export default function TransplantarPage() {
     setErroSalvar(null);
 
     let fotoUrl: string | null = null;
-    if (foto) {
+    if (fotos[0]) {
       try {
-        fotoUrl = await enviarFotoRegistro(foto, "transplante");
+        fotoUrl = await enviarFotoRegistro(fotos[0], "transplante");
       } catch {
         fotoUrl = null;
       }
     }
 
     try {
-      await registrarTransplante({
+      const { transplanteId } = await registrarTransplante({
         plantioOrigem,
         canteiroDestinoId,
         quantidade: quantidade.trim() ? Number(quantidade) : null,
         observacao: observacao.trim() || null,
         fotoUrl,
       });
+      if (fotos.length > 1) {
+        try {
+          const extras = await Promise.all(fotos.slice(1).map((f) => enviarFotoRegistro(f, "transplante")));
+          await salvarFotosExtras("plantio_transplantes", transplanteId, extras);
+        } catch {
+          // segue sem as extras — a capa já foi salva com o registro.
+        }
+      }
       setResultado("ok");
     } catch {
       setErroSalvar("Não deu pra salvar agora. Confira a internet e tente de novo.");
@@ -136,7 +143,7 @@ export default function TransplantarPage() {
     setSaldo(null);
     setCanteiroDestinoId(null);
     setQuantidade("");
-    selecionarFoto(null);
+    setFotos([]);
     setObservacao("");
     setResultado(null);
     setErroSalvar(null);
@@ -283,21 +290,7 @@ export default function TransplantarPage() {
 
       {passo === 5 && (
         <Passo titulo="Foto e observação (opcionais)">
-          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
-            />
-            {fotoPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
-            ) : (
-              <span className="text-sm font-bold text-zinc-800">📷 Tirar foto</span>
-            )}
-          </label>
+          <SeletorFotos fotos={fotos} onMudar={setFotos} />
 
           <textarea
             value={observacao}
@@ -321,7 +314,12 @@ export default function TransplantarPage() {
               valor={quantidade.trim() ? quantidade : "lote inteiro"}
               onEditar={() => irPara(4)}
             />
-            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(5)} ultima />
+            <LinhaResumo
+              rotulo="Fotos"
+              valor={fotos.length === 0 ? "sem foto" : `${fotos.length} anexada(s)`}
+              onEditar={() => irPara(5)}
+              ultima
+            />
           </div>
 
           {erroSalvar && <p className="mt-3 text-center text-xs text-red-700">{erroSalvar}</p>}

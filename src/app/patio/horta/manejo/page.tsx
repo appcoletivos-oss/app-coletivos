@@ -20,7 +20,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
+import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
 import { iconeTipoCanteiro, salvarRegistroManejo } from "@/lib/horta";
 import { listarPlantiosAtivosPorCanteiro } from "@/lib/plantios";
 import { criarFilaOffline } from "@/lib/fila-offline";
@@ -31,6 +31,7 @@ import {
   LinhaResumo,
   Passo,
   PontosPasso,
+  SeletorFotos,
   TelaBase,
 } from "@/components/fluxo-registro";
 
@@ -72,8 +73,7 @@ function ManejoConteudo() {
   const [plantiosCanteiro, setPlantiosCanteiro] = useState<PlantioComCultura[]>([]);
   const [tipoManejo, setTipoManejo] = useState<TipoManejo | null>(null);
   const [plantioIdsSelecionados, setPlantioIdsSelecionados] = useState<string[]>([]);
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
 
   const [salvando, setSalvando] = useState(false);
@@ -117,14 +117,6 @@ function ManejoConteudo() {
     setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
   }
 
-  function selecionarFoto(arquivo: File | null) {
-    setFoto(arquivo);
-    setFotoPreview((antigo) => {
-      if (antigo) URL.revokeObjectURL(antigo);
-      return arquivo ? URL.createObjectURL(arquivo) : null;
-    });
-  }
-
   async function escolherCanteiro(id: string) {
     setCanteiroId(id);
     try {
@@ -153,9 +145,9 @@ function ManejoConteudo() {
     setErroSalvar(null);
 
     let fotoUrl: string | null = null;
-    if (foto) {
+    if (fotos[0]) {
       try {
-        fotoUrl = await enviarFotoRegistro(foto, "manejo");
+        fotoUrl = await enviarFotoRegistro(fotos[0], "manejo");
       } catch {
         // Sem internet ou bucket ainda não configurado: segue sem foto em
         // vez de travar o registro inteiro nela (foto é opcional aqui).
@@ -179,7 +171,15 @@ function ManejoConteudo() {
     };
 
     try {
-      await salvarRegistroManejo(registro);
+      const registroId = await salvarRegistroManejo(registro);
+      if (fotos.length > 1 && registroId) {
+        try {
+          const extras = await Promise.all(fotos.slice(1).map((f) => enviarFotoRegistro(f, "manejo")));
+          await salvarFotosExtras("registros_manejo", registroId, extras);
+        } catch {
+          // segue sem as extras — a capa já foi salva com o registro.
+        }
+      }
       setResultado("ok");
     } catch {
       filaOffline.enfileirar(registro);
@@ -196,7 +196,7 @@ function ManejoConteudo() {
     setPlantiosCanteiro([]);
     setTipoManejo(null);
     setPlantioIdsSelecionados([]);
-    selecionarFoto(null);
+    setFotos([]);
     setObservacao("");
     setResultado(null);
     setErroSalvar(null);
@@ -336,21 +336,7 @@ function ManejoConteudo() {
 
       {passo === 4 && (
         <Passo titulo="Foto e observação (opcionais)">
-          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
-            />
-            {fotoPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
-            ) : (
-              <span className="text-sm font-bold text-zinc-800">📷 Tirar foto</span>
-            )}
-          </label>
+          <SeletorFotos fotos={fotos} onMudar={setFotos} />
 
           <textarea
             value={observacao}
@@ -382,7 +368,11 @@ function ManejoConteudo() {
                 onEditar={() => irPara(1)}
               />
             )}
-            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(4)} />
+            <LinhaResumo
+              rotulo="Fotos"
+              valor={fotos.length === 0 ? "sem foto" : `${fotos.length} anexada(s)`}
+              onEditar={() => irPara(4)}
+            />
             <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(4)} ultima />
           </div>
 

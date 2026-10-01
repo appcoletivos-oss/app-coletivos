@@ -20,7 +20,11 @@ export interface Parceiro {
   observacoes: string | null;
 }
 
-export type StatusCaixa = "ativa" | "nao_ativada" | "nova" | "desativada";
+// "descanso" — Etapa 1, item 6 (claude_handoff-registro-simplificado.md):
+// caixa fora de operação por decisão da coordenação (ex.: dar um tempo pro
+// composto maturar sem receber alimentação nova), diferente de
+// "desativada" (defeito, retirada de circulação).
+export type StatusCaixa = "ativa" | "nao_ativada" | "nova" | "desativada" | "descanso";
 
 export interface Caixa {
   id: string;
@@ -28,6 +32,9 @@ export interface Caixa {
   status: StatusCaixa;
   capacidade_kg: number;
   observacoes: string | null;
+  // Preenchida quando a caixa entra em descanso (cadastro já em descanso,
+  // ou botão "mover pra descanso") — null fora desse status.
+  data_inicio_descanso: string | null;
 }
 
 export type TipoCanteiro =
@@ -467,28 +474,48 @@ export interface LocalTrabalho {
 
 export type TipoPonto = "entrada" | "saida";
 
-// Um registro de entrada/saída — todo registro que existe já passou na
-// checagem de geofence no cliente (ver lib/ponto.ts e migration 20260826110000).
+// Etapa 1, item 7 (claude_handoff-registro-simplificado.md): ponto batido
+// fora do raio não é mais bloqueado — fica pendente de aprovação da
+// coordenação/consultor. "aprovado"/"rejeitado" são decisões manuais;
+// pontos dentro do raio não passam por esse campo (ficam null).
+export type StatusAprovacaoPonto = "pendente" | "aprovado" | "rejeitado";
+
+// Um registro de entrada/saída. Desde a Etapa 1 nem todo registro passou
+// na checagem de geofence no cliente — ver fora_do_raio/justificativa
+// (lib/ponto.ts e claude_handoff-registro-simplificado.md, Etapa 1 item 7).
+// latitude/longitude/distancia_metros são nullable desde a SQL de 01/10
+// (pontos_sem_gps_exige_justificativa): cobre o caso de GPS indisponível/
+// timeout dentro do shopping — null só é válido junto com
+// fora_do_raio=true e justificativa preenchida (regra garantida pela
+// constraint no banco, não só na tela).
 export interface Ponto {
   id: string;
   membro_equipe_id: string;
   tipo: TipoPonto;
   horario: string;
-  latitude: number;
-  longitude: number;
-  distancia_metros: number;
+  latitude: number | null;
+  longitude: number | null;
+  distancia_metros: number | null;
   observacao: string | null;
   criado_em: string;
+  fora_do_raio: boolean;
+  justificativa: string | null;
+  status_aprovacao: StatusAprovacaoPonto | null;
+  aprovado_por: string | null;
+  aprovado_em: string | null;
 }
 
 export interface NovoPonto {
   membro_equipe_id: string;
   tipo: TipoPonto;
   horario: string;
-  latitude: number;
-  longitude: number;
-  distancia_metros: number;
+  latitude: number | null;
+  longitude: number | null;
+  distancia_metros: number | null;
   observacao?: string | null;
+  fora_do_raio?: boolean;
+  justificativa?: string | null;
+  status_aprovacao?: StatusAprovacaoPonto | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -623,4 +650,67 @@ export interface GaleriaFoto {
   foto_url: string;
   data: string;
   descricao: string | null;
+}
+
+// -----------------------------------------------------------------------------
+// Registro simplificado — Etapa 1 (claude_handoff-registro-simplificado.md)
+// -----------------------------------------------------------------------------
+
+// Fotos além da capa de qualquer tabela de registro que já tinha
+// `foto_url` — a primeira foto continua indo pra `foto_url` da tabela
+// original (compatibilidade com a Galeria, que só lê a capa); as demais
+// viram linhas aqui. `tabela_origem` usa o nome real da tabela (ex.:
+// "registros_colheita"). Ver lib/patio.ts, salvarFotosExtras.
+export interface FotoRegistro {
+  id: string;
+  tabela_origem: string;
+  registro_id: string;
+  foto_url: string;
+  ordem: number;
+  criado_em: string;
+}
+
+// -----------------------------------------------------------------------------
+// Venda — Doação de alimento (Etapa 1, item 5 — bloco "Venda", parado
+// desde a sessão G, ativado nesta rodada só pra doação). Distinta de
+// PlantioDoacao (doação de muda/produção, vinculada a um plantio_id) —
+// aqui o rastreio é pela colheita, não pelo canteiro. Sem geofence: pode
+// ser registrada fora da área de trabalho (ver claude_handoff-registro-
+// simplificado.md, Etapa 1 item 5).
+// -----------------------------------------------------------------------------
+
+export interface DoacaoAlimento {
+  id: string;
+  registro_colheita_id: string | null;
+  cultura_id: string | null;
+  quantidade: number | null;
+  unidade: string;
+  destino: string | null;
+  foto_url: string;
+  observacao: string | null;
+  registrado_por: string | null;
+  criado_em: string;
+}
+
+// Exatamente um dos dois precisa vir preenchido: registro_colheita_id
+// (doação a partir de uma colheita já registrada) ou cultura_id + quantidade
+// (doação direta, sem colheita associada) — ver constraint
+// doacao_alimento_tem_origem no banco.
+export interface NovaDoacaoAlimento {
+  registro_colheita_id?: string | null;
+  cultura_id?: string | null;
+  quantidade?: number | null;
+  unidade?: string;
+  destino?: string | null;
+  foto_url: string;
+  observacao?: string | null;
+}
+
+// Projeção de registros_colheita usada pelo passo "escolher uma colheita
+// recente" de Registrar doação de alimento.
+export interface ColheitaRecente {
+  id: string;
+  cultura: string;
+  peso_kg: number;
+  registrado_em: string;
 }

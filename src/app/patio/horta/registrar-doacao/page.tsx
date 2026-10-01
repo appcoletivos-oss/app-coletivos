@@ -8,11 +8,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
+import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
 import { iconeTipoCanteiro } from "@/lib/horta";
 import { listarPlantiosAtivosPorCanteiro, registrarDoacaoPlantio } from "@/lib/plantios";
 import type { Canteiro, NovaPlantioDoacao, PlantioComCultura } from "@/lib/types";
-import { BotaoAvancar, BotaoGrande, LinhaResumo, Passo, PontosPasso, TelaBase } from "@/components/fluxo-registro";
+import {
+  BotaoAvancar,
+  BotaoGrande,
+  LinhaResumo,
+  Passo,
+  PontosPasso,
+  SeletorFotos,
+  TelaBase,
+} from "@/components/fluxo-registro";
 
 const TOTAL_PASSOS = 4;
 
@@ -32,8 +40,7 @@ export default function RegistrarDoacaoPage() {
   const [unidade, setUnidade] = useState("");
   const [destino, setDestino] = useState("");
   const [observacao, setObservacao] = useState("");
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
 
   const [salvando, setSalvando] = useState(false);
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
@@ -63,14 +70,6 @@ export default function RegistrarDoacaoPage() {
     setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
   }
 
-  function selecionarFoto(arquivo: File | null) {
-    setFoto(arquivo);
-    setFotoPreview((antigo) => {
-      if (antigo) URL.revokeObjectURL(antigo);
-      return arquivo ? URL.createObjectURL(arquivo) : null;
-    });
-  }
-
   async function escolherCanteiro(id: string) {
     setCanteiroId(id);
     setPlantioId(null);
@@ -94,9 +93,9 @@ export default function RegistrarDoacaoPage() {
     setErroSalvar(null);
 
     let fotoUrl: string | null = null;
-    if (foto) {
+    if (fotos[0]) {
       try {
-        fotoUrl = await enviarFotoRegistro(foto, "doacao");
+        fotoUrl = await enviarFotoRegistro(fotos[0], "doacao");
       } catch {
         fotoUrl = null;
       }
@@ -112,7 +111,15 @@ export default function RegistrarDoacaoPage() {
     };
 
     try {
-      await registrarDoacaoPlantio(registro);
+      const doacao = await registrarDoacaoPlantio(registro);
+      if (fotos.length > 1) {
+        try {
+          const extras = await Promise.all(fotos.slice(1).map((f) => enviarFotoRegistro(f, "doacao")));
+          await salvarFotosExtras("plantio_doacoes", doacao.id, extras);
+        } catch {
+          // segue sem as extras — a capa já foi salva com o registro.
+        }
+      }
       setResultado("ok");
     } catch {
       setErroSalvar("Não deu pra salvar agora. Confira a internet e tente de novo.");
@@ -130,7 +137,7 @@ export default function RegistrarDoacaoPage() {
     setUnidade("");
     setDestino("");
     setObservacao("");
-    selecionarFoto(null);
+    setFotos([]);
     setResultado(null);
     setErroSalvar(null);
   }
@@ -268,21 +275,7 @@ export default function RegistrarDoacaoPage() {
               className="mt-1 min-h-16 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
             />
           </label>
-          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
-            />
-            {fotoPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
-            ) : (
-              <span className="text-sm font-bold text-zinc-800">📷 Foto (opcional)</span>
-            )}
-          </label>
+          <SeletorFotos fotos={fotos} onMudar={setFotos} />
 
           <BotaoAvancar onClick={() => irPara(4)} />
         </Passo>

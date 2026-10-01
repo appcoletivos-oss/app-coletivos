@@ -29,16 +29,23 @@ export function iconeTipoCanteiro(tipo: TipoCanteiro): string {
   return ICONES_TIPO_CANTEIRO[tipo] ?? "🪴";
 }
 
-// Salva um registro de colheita. Lança erro se não houver internet ou
-// sessão autenticada — quem chama decide o que fazer (ex.: fila offline).
+// Salva um registro de colheita e devolve o id da linha criada (usado pra
+// anexar fotos extras em fotos_registro — ver lib/patio.ts,
+// salvarFotosExtras). Lança erro se não houver internet ou sessão
+// autenticada — quem chama decide o que fazer (ex.: fila offline).
 // `registrado_por` é preenchido pelo banco (default auth.uid(), ver
 // migration 20260827120000).
 export async function salvarRegistroColheita(
   registro: NovoRegistroColheita,
-): Promise<void> {
+): Promise<string> {
   await requerSessao();
-  const { error } = await supabase.from("registros_colheita").insert(registro);
+  const { data, error } = await supabase
+    .from("registros_colheita")
+    .insert(registro)
+    .select("id")
+    .single();
   if (error) throw error;
+  return data.id;
 }
 
 // Salva um registro de manejo (capina seletiva, adubação, poda,
@@ -54,7 +61,7 @@ export async function salvarRegistroColheita(
 // fila offline também vincule sozinho, sem duplicar lógica.
 export async function salvarRegistroManejo(
   registro: NovoRegistroManejo,
-): Promise<void> {
+): Promise<string> {
   await requerSessao();
   const { plantioIds, ...dados } = registro;
   const { data, error } = await supabase.from("registros_manejo").insert(dados).select("id").single();
@@ -62,6 +69,7 @@ export async function salvarRegistroManejo(
   if (plantioIds && plantioIds.length > 0) {
     await vincularManejoAPlantios(data.id, plantioIds);
   }
+  return data.id;
 }
 
 // CULTURAS_COMUNS/CULTURAS_CONHECIDAS/sugerirCorrecaoCultura (grid fixo de

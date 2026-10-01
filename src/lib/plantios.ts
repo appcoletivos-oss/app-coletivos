@@ -247,9 +247,15 @@ export async function listarEstoqueViveiro(): Promise<EstoqueViveiroCultura[]> {
     .in("status", ["germinando", "ativo"]);
   if (erroPlantios) throw erroPlantios;
 
-  // Supabase-js sem tipagem de schema infere relação embutida como array
-  // mesmo sendo many-to-one (mesma nota de calcularDemandasHorta acima) —
-  // na prática vem sempre com 0 ou 1 item.
+  // plantios.cultura_id -> culturas é many-to-one: o embed do Supabase
+  // volta um objeto (ou null) em tempo de execução, não array — mesmo
+  // padrão de LinhaPlantioParaDemanda, em calcularDemandasHorta. (Correção:
+  // esta função chegou a tipar como array por engano, o que fazia
+  // `p.culturas[0]` ser sempre undefined e o nome cair no fallback "—"
+  // mesmo com o join voltando certo.) Sem o generic de schema no client
+  // (ver lib/supabase.ts), o supabase-js infere o tipo estático do select
+  // como array só pra esse embed — daí o `as unknown as` pra corrigir
+  // contra o tipo real da resposta.
   type LinhaPlantioViveiro = {
     id: string;
     cultura_id: string;
@@ -258,9 +264,9 @@ export async function listarEstoqueViveiro(): Promise<EstoqueViveiroCultura[]> {
     data_inicio: string;
     unidade: string | null;
     status: "germinando" | "ativo";
-    culturas: { nome: string }[];
+    culturas: { nome: string } | null;
   };
-  const plantios = (plantiosData ?? []) as LinhaPlantioViveiro[];
+  const plantios = (plantiosData ?? []) as unknown as LinhaPlantioViveiro[];
   if (plantios.length === 0) return [];
 
   const { data: saldosData, error: erroSaldos } = await supabase
@@ -275,7 +281,7 @@ export async function listarEstoqueViveiro(): Promise<EstoqueViveiroCultura[]> {
     const saldo = saldoPorId.get(p.id) ?? 0;
     const atual = porCultura.get(p.cultura_id) ?? {
       culturaId: p.cultura_id,
-      culturaNome: p.culturas[0]?.nome ?? "—",
+      culturaNome: p.culturas?.nome ?? "—",
       germinando: 0,
       disponivel: 0,
       lotes: [],
@@ -315,13 +321,16 @@ export async function linhagemPlantio(plantioId: string): Promise<Plantio[]> {
 // 3) se a quantidade transplantada esgotou o saldo do lote de origem (ou
 // nenhuma quantidade foi informada), marca o lote de origem como
 // "transplantado".
+// Devolve o plantio novo (destino) e o id da linha de vínculo em
+// plantio_transplantes — este último usado pra anexar fotos extras em
+// fotos_registro (ver lib/patio.ts, salvarFotosExtras).
 export async function registrarTransplante(dados: {
   plantioOrigem: Plantio;
   canteiroDestinoId: string;
   quantidade: number | null;
   observacao?: string | null;
   fotoUrl?: string | null;
-}): Promise<Plantio> {
+}): Promise<{ destino: Plantio; transplanteId: string }> {
   await requerSessao();
   const { plantioOrigem, canteiroDestinoId, quantidade, observacao, fotoUrl } = dados;
 
@@ -340,14 +349,18 @@ export async function registrarTransplante(dados: {
     status: "ativo",
   });
 
-  const { error: erroVinculo } = await supabase.from("plantio_transplantes").insert({
-    plantio_origem_id: plantioOrigem.id,
-    plantio_destino_id: destino.id,
-    canteiro_destino_id: canteiroDestinoId,
-    quantidade,
-    observacao: observacao?.trim() || null,
-    foto_url: fotoUrl ?? null,
-  });
+  const { data: vinculo, error: erroVinculo } = await supabase
+    .from("plantio_transplantes")
+    .insert({
+      plantio_origem_id: plantioOrigem.id,
+      plantio_destino_id: destino.id,
+      canteiro_destino_id: canteiroDestinoId,
+      quantidade,
+      observacao: observacao?.trim() || null,
+      foto_url: fotoUrl ?? null,
+    })
+    .select("id")
+    .single();
   if (erroVinculo) throw erroVinculo;
 
   const saldo = await buscarSaldoPlantio(plantioOrigem.id);
@@ -355,7 +368,7 @@ export async function registrarTransplante(dados: {
     await supabase.from("plantios").update({ status: "transplantado" }).eq("id", plantioOrigem.id);
   }
 
-  return destino;
+  return { destino, transplanteId: vinculo.id };
 }
 
 export async function registrarPerda(dados: NovoRegistroPerda): Promise<RegistroPerda> {

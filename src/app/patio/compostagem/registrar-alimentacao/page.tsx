@@ -23,6 +23,7 @@ import {
   listarCaixas,
   listarParceirosAtivos,
   rotuloStatusCaixa,
+  salvarFotosExtras,
   salvarRegistroAlimentacao,
 } from "@/lib/patio";
 import { criarFilaOffline } from "@/lib/fila-offline";
@@ -31,9 +32,11 @@ import { IconeCaixaDagua } from "@/components/icone-caixa-dagua";
 import {
   BotaoAvancar,
   BotaoGrande,
+  CampoPeso,
   LinhaResumo,
   Passo,
   PontosPasso,
+  SeletorFotos,
   Stepper,
   TelaBase,
 } from "@/components/fluxo-registro";
@@ -74,8 +77,7 @@ function RegistrarAlimentacaoConteudo() {
   const [tipoResiduo, setTipoResiduo] = useState<TipoResiduo>("alimento");
   const [temperaturaAtiva, setTemperaturaAtiva] = useState(true);
   const [temperatura, setTemperatura] = useState(30);
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
 
   const [salvando, setSalvando] = useState(false);
@@ -131,23 +133,15 @@ function RegistrarAlimentacaoConteudo() {
     setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
   }
 
-  function selecionarFoto(arquivo: File | null) {
-    setFoto(arquivo);
-    setFotoPreview((antigo) => {
-      if (antigo) URL.revokeObjectURL(antigo);
-      return arquivo ? URL.createObjectURL(arquivo) : null;
-    });
-  }
-
   async function salvar() {
     if (!parceiroId || !caixaId) return;
     setSalvando(true);
     setErroSalvar(null);
 
     let fotoUrl: string | null = null;
-    if (foto) {
+    if (fotos[0]) {
       try {
-        fotoUrl = await enviarFotoRegistro(foto);
+        fotoUrl = await enviarFotoRegistro(fotos[0]);
       } catch {
         // Sem internet ou bucket ainda não configurado: segue sem foto em
         // vez de travar o registro inteiro nela.
@@ -167,7 +161,18 @@ function RegistrarAlimentacaoConteudo() {
     };
 
     try {
-      await salvarRegistroAlimentacao(registro);
+      const registroId = await salvarRegistroAlimentacao(registro);
+      // Fotos extras (além da capa) — melhor esforço: se o upload falhar
+      // (ex.: internet caiu no meio), o registro principal já está salvo,
+      // não trava a tela por causa de foto extra.
+      if (fotos.length > 1 && registroId) {
+        try {
+          const extras = await Promise.all(fotos.slice(1).map((f) => enviarFotoRegistro(f)));
+          await salvarFotosExtras("registros_alimentacao", registroId, extras);
+        } catch {
+          // segue sem as extras — a capa já foi salva com o registro.
+        }
+      }
       setResultado("ok");
     } catch {
       filaOffline.enfileirar(registro);
@@ -186,7 +191,7 @@ function RegistrarAlimentacaoConteudo() {
     setTipoResiduo("alimento");
     setTemperaturaAtiva(true);
     setTemperatura(30);
-    selecionarFoto(null);
+    setFotos([]);
     setObservacao("");
     setResultado(null);
     setErroSalvar(null);
@@ -322,13 +327,7 @@ function RegistrarAlimentacaoConteudo() {
 
       {passo === 3 && (
         <Passo titulo="Quanto pesou e que tipo era?">
-          <Stepper
-            valor={peso}
-            unidade="kg"
-            passoIncremento={0.5}
-            minimo={0.5}
-            onMudar={setPeso}
-          />
+          <CampoPeso valor={peso} onMudar={setPeso} autoFocus />
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {TIPOS_RESIDUO.map((t) => (
               <button
@@ -379,24 +378,11 @@ function RegistrarAlimentacaoConteudo() {
             </button>
           )}
 
-          <label className="mt-4 block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
-            />
-            {fotoPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
-            ) : (
-              <span className="text-sm font-bold text-zinc-800">📷 Tirar foto</span>
-            )}
-            <span className="mt-1 block text-[10px] text-red-800">obrigatório</span>
-          </label>
+          <div className="mt-4">
+            <SeletorFotos fotos={fotos} onMudar={setFotos} obrigatoria />
+          </div>
 
-          <BotaoAvancar onClick={() => irPara(5)} desabilitado={!foto} />
+          <BotaoAvancar onClick={() => irPara(5)} desabilitado={fotos.length === 0} />
         </Passo>
       )}
 
@@ -436,7 +422,11 @@ function RegistrarAlimentacaoConteudo() {
               valor={temperaturaAtiva ? `${temperatura} °C` : "não medida"}
               onEditar={() => irPara(4)}
             />
-            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(4)} />
+            <LinhaResumo
+              rotulo="Fotos"
+              valor={fotos.length === 0 ? "sem foto" : `${fotos.length} anexada(s)`}
+              onEditar={() => irPara(4)}
+            />
             <LinhaResumo rotulo="Observação" valor={observacao.trim() || "sem observação"} onEditar={() => irPara(5)} ultima />
           </div>
 

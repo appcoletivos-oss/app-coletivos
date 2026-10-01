@@ -28,6 +28,7 @@ export function rotuloStatusCaixa(status: StatusCaixa): string | null {
   if (status === "nao_ativada") return "não ativada";
   if (status === "nova") return "nova, aguardando";
   if (status === "desativada") return "desativada";
+  if (status === "descanso") return "em descanso";
   return null;
 }
 
@@ -111,15 +112,49 @@ export function resumoAlimentacaoPorCaixa(
   return mapa;
 }
 
-// Salva um registro de alimentação. Lança erro se não houver internet ou
-// se a sessão não estiver autenticada — quem chama decide o que fazer
-// (ex.: guardar na fila offline). `registrado_por` é preenchido pelo banco
-// (default auth.uid(), ver migration 20260827120000).
+// Salva um registro de alimentação e devolve o id da linha criada (usado
+// pra anexar fotos extras em fotos_registro — ver salvarFotosExtras
+// abaixo). Lança erro se não houver internet ou se a sessão não estiver
+// autenticada — quem chama decide o que fazer (ex.: guardar na fila
+// offline). `registrado_por` é preenchido pelo banco (default auth.uid(),
+// ver migration 20260827120000).
 export async function salvarRegistroAlimentacao(
   registro: NovoRegistroAlimentacao,
-): Promise<void> {
+): Promise<string> {
   await requerSessao();
-  const { error } = await supabase.from("registros_alimentacao").insert(registro);
+  const { data, error } = await supabase
+    .from("registros_alimentacao")
+    .insert(registro)
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+// -----------------------------------------------------------------------------
+// Fotos múltiplas (Etapa 1, item 2 — handoff "Registro simplificado").
+//
+// `foto_url` continua sendo a capa de cada tabela de registro (sem mudança
+// de schema nela nem na Galeria, que só lê a capa). Fotos além da primeira
+// viram linhas em `fotos_registro` (tabela nova, SQL já aplicada no
+// Supabase — ver claude_handoff-registro-simplificado.md, Etapa 1 item 2).
+// `tabela_origem` usa o nome real da tabela (ex.: "registros_colheita"),
+// mesma convenção do nome da coluna.
+// -----------------------------------------------------------------------------
+export async function salvarFotosExtras(
+  tabelaOrigem: string,
+  registroId: string,
+  caminhosFotos: string[],
+): Promise<void> {
+  if (caminhosFotos.length === 0) return;
+  await requerSessao();
+  const linhas = caminhosFotos.map((foto_url, ordem) => ({
+    tabela_origem: tabelaOrigem,
+    registro_id: registroId,
+    foto_url,
+    ordem,
+  }));
+  const { error } = await supabase.from("fotos_registro").insert(linhas);
   if (error) throw error;
 }
 
@@ -420,6 +455,9 @@ export function proximoNumeroCaixa(caixas: Caixa[]): number {
   return caixas.reduce((maior, c) => Math.max(maior, c.numero), 0) + 1;
 }
 
+// Cadastrar já em descanso (Etapa 1, item 6) também marca
+// data_inicio_descanso = hoje, pro card já nascer coerente (sem precisar
+// de um segundo passo "mover pra descanso" logo depois do cadastro).
 export async function criarCaixa(dados: {
   numero: number;
   status: StatusCaixa;
@@ -434,6 +472,7 @@ export async function criarCaixa(dados: {
       status: dados.status,
       capacidade_kg: dados.capacidade_kg,
       observacoes: dados.observacoes?.trim() || null,
+      data_inicio_descanso: dados.status === "descanso" ? new Date().toISOString() : null,
     })
     .select("*")
     .single();
@@ -442,6 +481,11 @@ export async function criarCaixa(dados: {
   return data;
 }
 
+// Editar o status pela aba Caixas não mexe em data_inicio_descanso —
+// "mover pra descanso" (abaixo) é a ação dedicada pra isso. Se a edição
+// tirar a caixa do descanso (ex.: corrigir engano), a data permanece como
+// histórico; só é limpa se a caixa voltar a ficar ativa por essa mesma
+// ação (ver moverCaixaParaDescanso).
 export async function atualizarCaixa(
   id: string,
   dados: { status: StatusCaixa; capacidade_kg: number; observacoes?: string | null },
@@ -453,6 +497,7 @@ export async function atualizarCaixa(
       status: dados.status,
       capacidade_kg: dados.capacidade_kg,
       observacoes: dados.observacoes?.trim() || null,
+      ...(dados.status !== "descanso" ? { data_inicio_descanso: null } : {}),
     })
     .eq("id", id);
 
@@ -466,6 +511,20 @@ export async function desativarCaixa(id: string): Promise<void> {
   const { error } = await supabase
     .from("caixas")
     .update({ status: "desativada" as StatusCaixa })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+// Mover uma caixa já existente pra descanso (Etapa 1, item 6) — restrito a
+// Coordenação/Consultor pela RLS real de `caixas` (uma única política
+// cobrindo toda escrita na tabela; equipe só lê — ver
+// claude_handoff-registro-simplificado.md, Etapa 1 item 6).
+export async function moverCaixaParaDescanso(id: string): Promise<void> {
+  await requerSessao();
+  const { error } = await supabase
+    .from("caixas")
+    .update({ status: "descanso" as StatusCaixa, data_inicio_descanso: new Date().toISOString() })
     .eq("id", id);
 
   if (error) throw error;

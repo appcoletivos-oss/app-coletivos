@@ -16,7 +16,12 @@ export interface FilaOffline<T> {
   enfileirar: (registro: T) => void;
   contar: () => number;
   tentarEnviar: (
-    salvar: (registro: T) => Promise<void>,
+    // Promise<unknown>, não Promise<void>: algumas funções de salvar
+    // passadas aqui agora devolvem o id da linha criada (ex.:
+    // salvarRegistroColheita, desde a Etapa 1 item 2 — fotos extras). A
+    // fila sempre ignora o valor resolvido, só se importa se deu certo ou
+    // lançou erro.
+    salvar: (registro: T) => Promise<unknown>,
   ) => Promise<{ enviados: number; restantes: number }>;
 }
 
@@ -50,7 +55,12 @@ export function criarFilaOffline<T>(chave: string): FilaOffline<T> {
   // por quem chama (evita import circular com patio.ts/horta.ts).
   // Registros que falharem de novo continuam na fila pra próxima tentativa.
   async function tentarEnviar(
-    salvar: (registro: T) => Promise<void>,
+    // Promise<unknown>, não Promise<void>: algumas funções de salvar
+    // passadas aqui agora devolvem o id da linha criada (ex.:
+    // salvarRegistroColheita, desde a Etapa 1 item 2 — fotos extras). A
+    // fila sempre ignora o valor resolvido, só se importa se deu certo ou
+    // lançou erro.
+    salvar: (registro: T) => Promise<unknown>,
   ): Promise<{ enviados: number; restantes: number }> {
     const fila = lerFila();
     if (fila.length === 0) return { enviados: 0, restantes: 0 };

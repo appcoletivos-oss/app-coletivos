@@ -26,16 +26,19 @@ import {
   buscarLocalTrabalho,
   calcularBancoDeHoras,
   calcularDistanciaMetros,
+  decidirPonto,
   limitesDaSemana,
   listarPontosDaSemana,
+  listarPontosPendentes,
   listarTurnosDaSemana,
   obterLocalizacaoAtual,
   salvarPonto,
   type BancoDeHoras,
+  type CoordenadaAtual,
 } from "@/lib/ponto";
 import { rotuloTurno } from "@/lib/agenda";
 import { criarFilaOffline } from "@/lib/fila-offline";
-import type { EventoAgenda, LocalTrabalho, MembroEquipe, NovoPonto, TipoPonto } from "@/lib/types";
+import type { EventoAgenda, LocalTrabalho, MembroEquipe, NovoPonto, Ponto, TipoPonto } from "@/lib/types";
 import { TelaBase } from "@/components/fluxo-registro";
 
 const filaOffline = criarFilaOffline<NovoPonto>("app-coletivo:fila-pontos");
@@ -58,9 +61,26 @@ export default function MeuPontoPage() {
   const [resumoEquipe, setResumoEquipe] = useState<ResumoMembro[]>([]);
 
   const [processando, setProcessando] = useState<TipoPonto | null>(null);
-  const [erroPonto, setErroPonto] = useState<string | null>(null);
   const [resultadoPonto, setResultadoPonto] = useState<ResultadoPonto>(null);
   const [pendentesOffline, setPendentesOffline] = useState(() => filaOffline.contar());
+
+  // Ponto fora do raio OU GPS indisponível/timeout (Etapa 1, item 7): em
+  // vez de bloquear, guarda aqui os dados já obtidos enquanto espera a
+  // justificativa, antes de confirmar o envio como pendente de aprovação.
+  // coordenada/distancia ficam null no caso de GPS indisponível — a tela
+  // distingue as duas mensagens, mas o fluxo de confirmação é o mesmo.
+  const [foraDoRaioPendente, setForaDoRaioPendente] = useState<{
+    tipo: TipoPonto;
+    coordenada: CoordenadaAtual | null;
+    distancia: number | null;
+  } | null>(null);
+  const [justificativa, setJustificativa] = useState("");
+  const [enviandoForaDoRaio, setEnviandoForaDoRaio] = useState(false);
+
+  // Aprovação de pontos fora do raio — só carregado/mostrado pra
+  // coordenação/consultor.
+  const [pontosPendentes, setPontosPendentes] = useState<Ponto[]>([]);
+  const [decidindoPontoId, setDecidindoPontoId] = useState<string | null>(null);
 
   const papel = meuMembro?.papel ?? null;
   const podeBaterPonto = papel === "coordenacao" || papel === "equipe";
@@ -93,6 +113,15 @@ export default function MeuPontoPage() {
     [carregarResumoDe],
   );
 
+  async function recarregarPendentes(verTodos: boolean) {
+    if (!verTodos) return;
+    try {
+      setPontosPendentes(await listarPontosPendentes());
+    } catch {
+      // silencioso: a seção de aprovação só não aparece preenchida.
+    }
+  }
+
   useEffect(() => {
     let cancelado = false;
     (async () => {
@@ -102,7 +131,8 @@ export default function MeuPontoPage() {
         setMeuMembro(membro);
         setLocalTrabalho(local);
         if (membro) {
-          await recarregarResumos(membro, membro.papel === "coordenacao" || membro.papel === "consultor");
+          const verTodos = membro.papel === "coordenacao" || membro.papel === "consultor";
+          await Promise.all([recarregarResumos(membro, verTodos), recarregarPendentes(verTodos)]);
         }
       } catch {
         if (!cancelado) {
@@ -127,11 +157,27 @@ export default function MeuPontoPage() {
     return () => window.removeEventListener("online", tentarEnviar);
   }, []);
 
+  // Salva o registro (online ou na fila offline) e atualiza os resumos —
+  // compartilhado entre o caminho normal (dentro do raio) e a confirmação
+  // de "bater fora do pátio" (ver confirmarForaDoRaio).
+  async function salvarEAtualizar(registro: NovoPonto, tipo: TipoPonto) {
+    if (!meuMembro) return;
+    try {
+      await salvarPonto(registro);
+      setResultadoPonto({ tipo, offline: false });
+      await recarregarResumos(meuMembro, podeVerTodos);
+    } catch {
+      filaOffline.enfileirar(registro);
+      setPendentesOffline(filaOffline.contar());
+      setResultadoPonto({ tipo, offline: true });
+    }
+  }
+
   async function baterPonto(tipo: TipoPonto) {
     if (!meuMembro || !localTrabalho) return;
     setProcessando(tipo);
-    setErroPonto(null);
     setResultadoPonto(null);
+    setForaDoRaioPendente(null);
 
     try {
       const coordenada = await obterLocalizacaoAtual();
@@ -143,9 +189,11 @@ export default function MeuPontoPage() {
       );
 
       if (distancia > localTrabalho.raio_metros) {
-        setErroPonto(
-          `Você está a ${Math.round(distancia)}m do pátio — o ponto só pode ser batido lá.`,
-        );
+        // Etapa 1, item 7: fora do raio não bloqueia mais — oferece bater
+        // mesmo assim, com justificativa obrigatória, pendente de
+        // aprovação da coordenação/consultor.
+        setJustificativa("");
+        setForaDoRaioPendente({ tipo, coordenada, distancia });
         return;
       }
 
@@ -157,24 +205,49 @@ export default function MeuPontoPage() {
         longitude: coordenada.longitude,
         distancia_metros: distancia,
       };
-
-      try {
-        await salvarPonto(registro);
-        setResultadoPonto({ tipo, offline: false });
-        await recarregarResumos(meuMembro, podeVerTodos);
-      } catch {
-        filaOffline.enfileirar(registro);
-        setPendentesOffline(filaOffline.contar());
-        setResultadoPonto({ tipo, offline: true });
-      }
-    } catch (erro) {
-      setErroPonto(
-        erro instanceof Error
-          ? erro.message
-          : "Não foi possível confirmar sua localização — verifique se o GPS está ativado.",
-      );
+      await salvarEAtualizar(registro, tipo);
+    } catch {
+      // GPS indisponível/timeout (SQL de 01/10 — latitude/longitude/
+      // distancia_metros aceitam null): mesmo caminho de "bater fora do
+      // pátio" do caso acima, só que sem coordenada nenhuma pra mostrar.
+      setJustificativa("");
+      setForaDoRaioPendente({ tipo, coordenada: null, distancia: null });
     } finally {
       setProcessando(null);
+    }
+  }
+
+  async function confirmarForaDoRaio() {
+    if (!meuMembro || !foraDoRaioPendente || !justificativa.trim()) return;
+    const { tipo, coordenada, distancia } = foraDoRaioPendente;
+    setEnviandoForaDoRaio(true);
+
+    const registro: NovoPonto = {
+      membro_equipe_id: meuMembro.id,
+      tipo,
+      horario: new Date().toISOString(),
+      latitude: coordenada?.latitude ?? null,
+      longitude: coordenada?.longitude ?? null,
+      distancia_metros: distancia,
+      fora_do_raio: true,
+      justificativa: justificativa.trim(),
+      status_aprovacao: "pendente",
+    };
+
+    await salvarEAtualizar(registro, tipo);
+    await recarregarPendentes(podeVerTodos);
+    setForaDoRaioPendente(null);
+    setJustificativa("");
+    setEnviandoForaDoRaio(false);
+  }
+
+  async function decidir(id: string, aprovado: boolean) {
+    setDecidindoPontoId(id);
+    try {
+      await decidirPonto(id, aprovado);
+      await recarregarPendentes(true);
+    } finally {
+      setDecidindoPontoId(null);
     }
   }
 
@@ -229,10 +302,44 @@ export default function MeuPontoPage() {
             </button>
           </div>
 
-          {erroPonto && (
-            <p className="mb-3 rounded-lg border-2 border-red-300 bg-red-50 p-2 text-center text-xs text-red-800">
-              {erroPonto}
-            </p>
+          {foraDoRaioPendente && (
+            <div className="mb-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+              <p className="mb-2 text-xs font-bold text-amber-900">
+                {foraDoRaioPendente.coordenada && foraDoRaioPendente.distancia !== null
+                  ? `Você está a ${Math.round(foraDoRaioPendente.distancia)}m do pátio — fora do raio.`
+                  : "Não foi possível confirmar sua localização (GPS indisponível ou demorou demais pra responder)."}
+              </p>
+              <p className="mb-2 text-[11px] text-amber-800">
+                Pode bater mesmo assim, com uma justificativa. O registro fica pendente de aprovação
+                da coordenação.
+              </p>
+              <textarea
+                value={justificativa}
+                onChange={(e) => setJustificativa(e.target.value)}
+                placeholder='Ex.: "cheguei direto de outra atividade, sem passar pelo pátio"...'
+                className="mb-2 min-h-16 w-full rounded-lg border-2 border-amber-300 bg-white p-2 text-xs"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={!justificativa.trim() || enviandoForaDoRaio}
+                  onClick={confirmarForaDoRaio}
+                  className="flex-1 rounded-lg bg-amber-600 py-2 text-xs font-bold text-white disabled:opacity-40"
+                >
+                  {enviandoForaDoRaio ? "Enviando…" : "Bater mesmo assim"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForaDoRaioPendente(null);
+                    setJustificativa("");
+                  }}
+                  className="rounded-lg border-2 border-amber-300 px-3 py-2 text-xs font-bold text-amber-800"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           )}
 
           {resultadoPonto && (
@@ -251,6 +358,25 @@ export default function MeuPontoPage() {
         </p>
       )}
 
+      {podeVerTodos && pontosPendentes.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-2 text-xs font-bold text-zinc-800">
+            ⏳ Pontos fora do pátio — aguardando aprovação
+          </p>
+          <div className="flex flex-col gap-2">
+            {pontosPendentes.map((p) => (
+              <CartaoPontoPendente
+                key={p.id}
+                ponto={p}
+                nomeMembro={resumoEquipe.find((r) => r.membro.id === p.membro_equipe_id)?.membro.nome ?? "—"}
+                decidindo={decidindoPontoId === p.id}
+                onDecidir={(aprovado) => decidir(p.id, aprovado)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {podeVerTodos ? (
         <div className="flex flex-col gap-3">
           {resumoEquipe.length === 0 && (
@@ -264,6 +390,51 @@ export default function MeuPontoPage() {
         meuResumo && <CartaoResumo resumo={meuResumo} titulo="Sua semana" mostrarEscala />
       )}
     </TelaBase>
+  );
+}
+
+function CartaoPontoPendente({
+  ponto,
+  nomeMembro,
+  decidindo,
+  onDecidir,
+}: {
+  ponto: Ponto;
+  nomeMembro: string;
+  decidindo: boolean;
+  onDecidir: (aprovado: boolean) => void;
+}) {
+  return (
+    <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-zinc-900">{nomeMembro}</span>
+        <span className="text-[11px] font-semibold text-zinc-600">
+          {ponto.tipo === "entrada" ? "🟢 entrada" : "🔴 saída"} · {new Date(ponto.horario).toLocaleString("pt-BR")}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] text-zinc-600">
+        {ponto.distancia_metros !== null ? `${Math.round(ponto.distancia_metros)}m do pátio` : "Sem GPS — localização não confirmada"}
+      </p>
+      {ponto.justificativa && <p className="mt-1 text-[11px] italic text-zinc-700">“{ponto.justificativa}”</p>}
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={decidindo}
+          onClick={() => onDecidir(true)}
+          className="flex-1 rounded-lg bg-[#2e6b3e] py-1.5 text-[11px] font-bold text-white disabled:opacity-40"
+        >
+          ✅ Aprovar
+        </button>
+        <button
+          type="button"
+          disabled={decidindo}
+          onClick={() => onDecidir(false)}
+          className="flex-1 rounded-lg border-2 border-red-300 py-1.5 text-[11px] font-bold text-red-700 disabled:opacity-40"
+        >
+          ❌ Rejeitar
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -66,9 +66,11 @@ export function calcularDistanciaMetros(
 
 // -----------------------------------------------------------------------------
 // Geolocalização do navegador — funciona offline (não depende de rede).
-// Falha em obter GPS (permissão negada, timeout, sem sinal) é tratada como
-// bloqueio no fluxo de bater ponto, igual a estar fora do raio — nunca um
-// fallback manual (decisão de produto, ver Registro Geral).
+// Falha em obter GPS (permissão negada, timeout, sem sinal) não bloqueia
+// mais o registro desde a SQL de 01/10 (ver claude_handoff-registro-
+// simplificado.md, Etapa 1 item 7): o fluxo oferece "bater fora do pátio"
+// sem coordenada, com justificativa obrigatória, igual ao caminho de estar
+// fora do raio (ver meu-ponto/page.tsx, foraDoRaioPendente).
 // -----------------------------------------------------------------------------
 
 export interface CoordenadaAtual {
@@ -125,6 +127,40 @@ export async function listarPontosDaSemana(
 
   if (error) throw error;
   return data ?? [];
+}
+
+// -----------------------------------------------------------------------------
+// Ponto fora do raio — aprovação (Etapa 1, item 7 — ver
+// claude_handoff-registro-simplificado.md). Restrito a Coordenação/
+// Consultor pela RLS real (policy "coordenacao e consultor aprovam
+// pontos", update-only — leitura já era liberada pra qualquer papel).
+// -----------------------------------------------------------------------------
+
+export async function listarPontosPendentes(): Promise<Ponto[]> {
+  await requerSessao();
+  const { data, error } = await supabase
+    .from("pontos")
+    .select("*")
+    .eq("status_aprovacao", "pendente")
+    .order("horario", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function decidirPonto(id: string, aprovado: boolean): Promise<void> {
+  await requerSessao();
+  const { data: sessao } = await supabase.auth.getSession();
+  const { error } = await supabase
+    .from("pontos")
+    .update({
+      status_aprovacao: aprovado ? "aprovado" : "rejeitado",
+      aprovado_por: sessao.session?.user.id ?? null,
+      aprovado_em: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) throw error;
 }
 
 export async function listarTurnosDaSemana(

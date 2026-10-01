@@ -16,7 +16,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { enviarFotoRegistro, listarCanteiros } from "@/lib/patio";
+import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
 import { iconeTipoCanteiro, salvarRegistroColheita } from "@/lib/horta";
 import { listarCulturasAtivas } from "@/lib/culturas";
 import { criarPlantio, listarPlantiosAtivosPorCanteiro, marcarStatusPlantio } from "@/lib/plantios";
@@ -25,10 +25,11 @@ import type { Canteiro, Cultura, NovoRegistroColheita, PlantioComCultura } from 
 import {
   BotaoAvancar,
   BotaoGrande,
+  CampoPeso,
   LinhaResumo,
   Passo,
   PontosPasso,
-  Stepper,
+  SeletorFotos,
   TelaBase,
 } from "@/components/fluxo-registro";
 import Link from "next/link";
@@ -72,8 +73,7 @@ function RegistrarColheitaConteudo() {
   const [cadastroErro, setCadastroErro] = useState<string | null>(null);
 
   const [peso, setPeso] = useState(1);
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
   const [encerraPlantio, setEncerraPlantio] = useState(true);
   const [encerraTocado, setEncerraTocado] = useState(false);
@@ -123,14 +123,6 @@ function RegistrarColheitaConteudo() {
 
   function irPara(novoPasso: number) {
     setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
-  }
-
-  function selecionarFoto(arquivo: File | null) {
-    setFoto(arquivo);
-    setFotoPreview((antigo) => {
-      if (antigo) URL.revokeObjectURL(antigo);
-      return arquivo ? URL.createObjectURL(arquivo) : null;
-    });
   }
 
   async function escolherCanteiro(id: string) {
@@ -208,9 +200,9 @@ function RegistrarColheitaConteudo() {
     setErroSalvar(null);
 
     let fotoUrl: string | null = null;
-    if (foto) {
+    if (fotos[0]) {
       try {
-        fotoUrl = await enviarFotoRegistro(foto, "colheita");
+        fotoUrl = await enviarFotoRegistro(fotos[0], "colheita");
       } catch {
         fotoUrl = null;
       }
@@ -227,7 +219,15 @@ function RegistrarColheitaConteudo() {
     };
 
     try {
-      await salvarRegistroColheita(registro);
+      const registroId = await salvarRegistroColheita(registro);
+      if (fotos.length > 1 && registroId) {
+        try {
+          const extras = await Promise.all(fotos.slice(1).map((f) => enviarFotoRegistro(f, "colheita")));
+          await salvarFotosExtras("registros_colheita", registroId, extras);
+        } catch {
+          // segue sem as extras — a capa já foi salva com o registro.
+        }
+      }
       if (encerraPlantio) {
         try {
           await marcarStatusPlantio(plantioId, "colhido");
@@ -252,7 +252,7 @@ function RegistrarColheitaConteudo() {
     setPlantios([]);
     setPlantioId(null);
     setPeso(1);
-    selecionarFoto(null);
+    setFotos([]);
     setObservacao("");
     setEncerraPlantio(true);
     setEncerraTocado(false);
@@ -406,31 +406,15 @@ function RegistrarColheitaConteudo() {
 
       {passo === 3 && (
         <Passo titulo="Quanto foi colhido?">
-          <Stepper valor={peso} unidade="kg" passoIncremento={0.1} minimo={0.1} onMudar={setPeso} />
+          <CampoPeso valor={peso} onMudar={setPeso} autoFocus />
           <BotaoAvancar onClick={() => irPara(4)} />
         </Passo>
       )}
 
       {passo === 4 && (
-        <Passo titulo="Uma foto da colheita">
-          <label className="block cursor-pointer rounded-xl border-2 border-dashed border-zinc-800 bg-[#f1efe6] p-6 text-center">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => selecionarFoto(e.target.files?.[0] ?? null)}
-            />
-            {fotoPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoPreview} alt="Prévia da foto" className="mx-auto max-h-32 rounded-lg" />
-            ) : (
-              <span className="text-sm font-bold text-zinc-800">📷 Tirar foto</span>
-            )}
-            <span className="mt-1 block text-[10px] text-red-800">obrigatório</span>
-          </label>
-
-          <BotaoAvancar onClick={() => irPara(5)} desabilitado={!foto} />
+        <Passo titulo="Fotos da colheita">
+          <SeletorFotos fotos={fotos} onMudar={setFotos} obrigatoria />
+          <BotaoAvancar onClick={() => irPara(5)} desabilitado={fotos.length === 0} />
         </Passo>
       )}
 
@@ -473,7 +457,11 @@ function RegistrarColheitaConteudo() {
             <LinhaResumo rotulo="Canteiro" valor={canteiroSelecionado?.nome ?? "—"} onEditar={() => irPara(1)} />
             <LinhaResumo rotulo="Plantio" valor={plantioSelecionado?.cultura_nome ?? "—"} onEditar={() => irPara(2)} />
             <LinhaResumo rotulo="Peso colhido" valor={`${peso} kg`} onEditar={() => irPara(3)} />
-            <LinhaResumo rotulo="Foto" valor={foto ? "1 anexada" : "sem foto"} onEditar={() => irPara(4)} />
+            <LinhaResumo
+              rotulo="Fotos"
+              valor={fotos.length === 0 ? "sem foto" : `${fotos.length} anexada(s)`}
+              onEditar={() => irPara(4)}
+            />
             <LinhaResumo
               rotulo="Encerra o plantio?"
               valor={encerraPlantio ? "sim" : "não"}
