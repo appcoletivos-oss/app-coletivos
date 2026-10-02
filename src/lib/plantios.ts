@@ -52,6 +52,7 @@ export async function listarPlantiosAtivosPorCanteiro(canteiroId: string): Promi
     .select("*, culturas(nome, ciclo_produtivo)")
     .eq("canteiro_id", canteiroId)
     .in("status", ["ativo", "germinando"])
+    .is("anulado_em", null)
     .order("criado_em", { ascending: false });
 
   if (error) throw error;
@@ -72,6 +73,26 @@ export async function listarPlantiosParaMapaPorCanteiro(canteiroId: string): Pro
     .select("*, culturas(nome, ciclo_produtivo)")
     .eq("canteiro_id", canteiroId)
     .in("status", ["ativo", "germinando", "transplantado"])
+    .is("anulado_em", null)
+    .order("criado_em", { ascending: false });
+
+  if (error) throw error;
+  return mapearComCultura(data ?? []);
+}
+
+// Todos os plantios do Mapa de uma vez (Sprint A.1, item 1 — o Mapa virou
+// a tela inicial da Horta). Mesmo filtro de status de
+// listarPlantiosParaMapaPorCanteiro, mas numa consulta só em vez de uma por
+// canteiro: com o Mapa na porta de entrada, N consultas em paralelo a cada
+// abertura pesavam no celular com internet fraca. Quem chama agrupa por
+// canteiro_id.
+export async function listarPlantiosParaMapa(): Promise<PlantioComCultura[]> {
+  await requerSessao();
+  const { data, error } = await supabase
+    .from("plantios")
+    .select("*, culturas(nome, ciclo_produtivo)")
+    .in("status", ["ativo", "germinando", "transplantado"])
+    .is("anulado_em", null)
     .order("criado_em", { ascending: false });
 
   if (error) throw error;
@@ -86,6 +107,7 @@ export async function listarPlantiosGerminando(): Promise<PlantioComCultura[]> {
     .from("plantios")
     .select("*, culturas(nome, ciclo_produtivo)")
     .eq("status", "germinando")
+    .is("anulado_em", null)
     .order("data_inicio", { ascending: true });
 
   if (error) throw error;
@@ -268,7 +290,8 @@ export async function listarEstoqueViveiro(): Promise<EstoqueViveiroCultura[]> {
     .from("plantios")
     .select("id, cultura_id, canteiro_id, origem, data_inicio, unidade, status, culturas(nome)")
     .in("canteiro_id", canteirosViveiro.map((c) => c.id))
-    .in("status", ["germinando", "ativo"]);
+    .in("status", ["germinando", "ativo"])
+    .is("anulado_em", null);
   if (erroPlantios) throw erroPlantios;
 
   // plantios.cultura_id -> culturas é many-to-one: o embed do Supabase
@@ -413,6 +436,39 @@ export async function registrarPerda(dados: NovoRegistroPerda): Promise<Registro
   return data;
 }
 
+// Motivos de perda mais usados (Sprint A.1, item 2 — Perda com motivo em
+// botões). `registros_perdas.motivo` é texto livre (sem tabela de motivos),
+// então os chips saem do próprio histórico: os mais frequentes entre os
+// últimos registros, sem a perda automática que o sistema cria sozinho ao
+// encerrar bandeja. Não cria tabela nova (regra da sprint).
+const MOTIVO_PERDA_AUTOMATICA = "perda automática";
+
+export async function listarMotivosPerdaFrequentes(limite = 8): Promise<string[]> {
+  await requerSessao();
+  const { data, error } = await supabase
+    .from("registros_perdas")
+    .select("motivo")
+    .not("motivo", "is", null)
+    .is("anulado_em", null)
+    .order("registrado_em", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+
+  const contagem = new Map<string, { texto: string; vezes: number }>();
+  for (const { motivo } of (data ?? []) as { motivo: string }[]) {
+    const texto = motivo.trim();
+    if (!texto || texto.toLowerCase().startsWith(MOTIVO_PERDA_AUTOMATICA)) continue;
+    const chave = texto.toLowerCase();
+    const atual = contagem.get(chave);
+    if (atual) atual.vezes += 1;
+    else contagem.set(chave, { texto, vezes: 1 });
+  }
+  return [...contagem.values()]
+    .sort((a, b) => b.vezes - a.vezes)
+    .slice(0, limite)
+    .map((m) => m.texto);
+}
+
 export async function registrarDoacaoPlantio(dados: NovaPlantioDoacao): Promise<PlantioDoacao> {
   await requerSessao();
   const { data, error } = await supabase
@@ -523,7 +579,8 @@ export async function calcularDemandasHorta(): Promise<DemandaHorta[]> {
   const { data: plantiosData, error: erroPlantios } = await supabase
     .from("plantios")
     .select("*, culturas(nome, dias_para_germinacao, dias_para_transplante)")
-    .in("status", ["ativo", "germinando"]);
+    .in("status", ["ativo", "germinando"])
+    .is("anulado_em", null);
   if (erroPlantios) throw erroPlantios;
 
   const plantios = (plantiosData ?? []) as LinhaPlantioParaDemanda[];

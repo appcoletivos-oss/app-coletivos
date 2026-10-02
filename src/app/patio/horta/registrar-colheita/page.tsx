@@ -1,45 +1,49 @@
 "use client";
 
-// Horta → Registrar colheita
+// Horta → Colher
 //
 // Ajustada pro handoff v3 (HANDOFF_HORTA_COMPLETO.md, seção 3.6): a
 // cultura não é mais digitada — a pessoa escolhe um plantio ativo do
 // canteiro, e a cultura vem dele. O fechamento do plantio NUNCA é
 // automático por ciclo_produtivo: a ficha da cultura só pré-marca o
-// checkbox "essa colheita encerra o plantio?" (pra ciclo=unico), mas quem
-// registra sempre confirma ou troca — porque a mesma espécie pode ser
-// tratada como corte único ou colheita contínua dependendo de como o
-// coletivo realmente maneja.
+// "essa colheita encerra o plantio?" (pra ciclo=unico), mas quem registra
+// sempre confirma ou troca — porque a mesma espécie pode ser tratada como
+// corte único ou colheita contínua dependendo de como o coletivo maneja.
+//
+// Sprint A.1 (SPRINT_A1_MENOS_TOQUES.md, item 2): TELA ÚNICA. Vindo do card
+// do plantio no Mapa (?canteiro=&plantio=), sobra digitar o peso e tocar em
+// Salvar. Fotos e observação ficam recolhidas em "Mais detalhes"; não há
+// mais tela de conferência — o botão Salvar já mostra o resumo.
 //
 // "Quem registrou" e "data" nunca são perguntados — vêm da sessão de
 // login e do relógio do aparelho, mesmo espírito de sempre.
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { enviarFotoRegistro, listarCanteiros, salvarFotosExtras } from "@/lib/patio";
-import { iconeTipoCanteiro, salvarRegistroColheita } from "@/lib/horta";
+import { enviarFotoRegistro, salvarFotosExtras } from "@/lib/patio";
+import { salvarRegistroColheita } from "@/lib/horta";
 import { listarCulturasAtivas } from "@/lib/culturas";
-import { criarPlantio, listarPlantiosAtivosPorCanteiro, marcarStatusPlantio } from "@/lib/plantios";
+import { criarPlantio, marcarStatusPlantio } from "@/lib/plantios";
 import { vincularRegistroAoItem } from "@/lib/relatorio-turno";
 import { criarFilaOffline } from "@/lib/fila-offline";
-import type { Canteiro, Cultura, NovoRegistroColheita, PlantioComCultura } from "@/lib/types";
+import type { Cultura, NovoRegistroColheita, PlantioComCultura } from "@/lib/types";
 import {
-  BotaoAvancar,
-  BotaoGrande,
+  BlocoRecolhivel,
+  BotaoSalvar,
   CampoPeso,
-  LinhaResumo,
-  Passo,
-  PontosPasso,
+  RotuloCampo,
   SeletorFotos,
   TelaBase,
+  formatarNumero,
 } from "@/components/fluxo-registro";
-import Link from "next/link";
-
-const TOTAL_PASSOS = 6;
+import { EscolhaPlantioCampos, useEscolhaPlantio } from "@/components/escolha-plantio";
 
 const filaOffline = criarFilaOffline<NovoRegistroColheita>(
   "app-coletivo:fila-registros-colheita",
 );
+
+// Constante de módulo: o hook usa a lista como chave de efeito.
+const STATUS_COLHIVEIS: PlantioComCultura["status"][] = ["ativo"];
 
 // useSearchParams exige um limite de Suspense em volta (regra do Next.js
 // pra Client Components) — por isso o export default vira só um wrapper,
@@ -52,26 +56,21 @@ function RegistrarColheitaConteudo() {
   const eventoAgendaId = searchParams.get("evento_agenda_id");
   // Preenchidos quando a tela é aberta a partir do Relatório do Turno
   // (Sprint A, item 6, tipo_registro=canteiro → Colheita) — ver
-  // lib/relatorio-turno.ts, hrefSubFormulario.
+  // relatorio-turno-conteudo.tsx, hrefSubFormulario.
   const relatorioItemId = searchParams.get("relatorio_item");
   const voltarHref = searchParams.get("voltar");
+  const fecharHref = voltarHref ? decodeURIComponent(voltarHref) : "/patio/horta";
 
-  const [passo, setPasso] = useState(1);
+  const escolha = useEscolhaPlantio(STATUS_COLHIVEIS);
+  const { canteiro, plantio } = escolha;
 
-  const [carregando, setCarregando] = useState(true);
-  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
-  const [canteiros, setCanteiros] = useState<Canteiro[]>([]);
   const [culturas, setCulturas] = useState<Cultura[]>([]);
-
-  const [canteiroId, setCanteiroId] = useState<string | null>(null);
-  const [plantios, setPlantios] = useState<PlantioComCultura[]>([]);
-  const [carregandoPlantios, setCarregandoPlantios] = useState(false);
-  const [plantioId, setPlantioId] = useState<string | null>(null);
 
   // Cadastro rápido de planta "já existente" sem sair da tela (ver
   // HANDOFF_HORTA_COMPLETO.md, seção 3.6, e pedido do usuário, 2026-08-28):
   // quem colhe uma planta que ainda não tem plantio cadastrado cadastra na
-  // hora, sem perder o canteiro já escolhido no passo 1.
+  // hora, sem perder o canteiro já escolhido. Agora atrás do link "Não
+  // achei o plantio".
   const [cadastroAberto, setCadastroAberto] = useState(false);
   const [cadastroBuscaCultura, setCadastroBuscaCultura] = useState("");
   const [cadastroCulturaId, setCadastroCulturaId] = useState<string | null>(null);
@@ -80,40 +79,27 @@ function RegistrarColheitaConteudo() {
   const [cadastroSalvando, setCadastroSalvando] = useState(false);
   const [cadastroErro, setCadastroErro] = useState<string | null>(null);
 
-  const [peso, setPeso] = useState(1);
+  const [peso, setPeso] = useState(0);
   const [fotos, setFotos] = useState<File[]>([]);
   const [observacao, setObservacao] = useState("");
-  const [encerraPlantio, setEncerraPlantio] = useState(true);
-  const [encerraTocado, setEncerraTocado] = useState(false);
+  // null = a pessoa ainda não mexeu: vale o padrão da cultura do plantio
+  // escolhido (ciclo único → encerra). Mexeu, vale o que ela marcou.
+  const [encerraEscolhido, setEncerraEscolhido] = useState<boolean | null>(null);
+  const encerraPlantio = encerraEscolhido ?? plantio?.cultura_ciclo_produtivo === "unico";
 
   const [salvando, setSalvando] = useState(false);
-  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<"ok" | "offline" | null>(null);
-  const [pendentesOffline, setPendentesOffline] = useState(() => filaOffline.contar());
+  const [pendentesOffline, setPendentesOffline] = useState(0);
 
   useEffect(() => {
     let cancelado = false;
-    async function carregar() {
-      try {
-        const [listaCanteiros, listaCulturas] = await Promise.all([
-          listarCanteiros(),
-          listarCulturasAtivas(),
-        ]);
-        if (!cancelado) {
-          setCanteiros(listaCanteiros);
-          setCulturas(listaCulturas);
-        }
-      } catch {
-        if (!cancelado) {
-          setErroCarregamento(
-            "Não deu pra carregar os canteiros agora. Confira a internet e tente de novo.",
-          );
-        }
-      } finally {
-        if (!cancelado) setCarregando(false);
-      }
-    }
-    carregar();
+    listarCulturasAtivas()
+      .then((lista) => {
+        if (!cancelado) setCulturas(lista);
+      })
+      .catch(() => {
+        // Só o cadastro rápido usa as culturas — sem elas, ele mostra a
+        // lista vazia; o resto da tela segue.
+      });
     return () => {
       cancelado = true;
     };
@@ -128,33 +114,6 @@ function RegistrarColheitaConteudo() {
     window.addEventListener("online", tentarEnviar);
     return () => window.removeEventListener("online", tentarEnviar);
   }, []);
-
-  function irPara(novoPasso: number) {
-    setPasso(Math.min(Math.max(novoPasso, 1), TOTAL_PASSOS));
-  }
-
-  async function escolherCanteiro(id: string) {
-    setCanteiroId(id);
-    setPlantioId(null);
-    setCarregandoPlantios(true);
-    try {
-      const lista = await listarPlantiosAtivosPorCanteiro(id);
-      setPlantios(lista.filter((p) => p.status === "ativo"));
-      irPara(2);
-    } catch {
-      setErroCarregamento("Não deu pra carregar os plantios desse canteiro agora.");
-    } finally {
-      setCarregandoPlantios(false);
-    }
-  }
-
-  function escolherPlantio(p: PlantioComCultura) {
-    setPlantioId(p.id);
-    // Valor de partida do checkbox: pré-marca conforme o ciclo_produtivo da
-    // cultura, mas só se a pessoa ainda não mexeu manualmente nele.
-    if (!encerraTocado) setEncerraPlantio(p.cultura_ciclo_produtivo === "unico");
-    irPara(3);
-  }
 
   const culturasFiltradas = useMemo(() => {
     const alvo = cadastroBuscaCultura.trim().toLowerCase();
@@ -172,29 +131,27 @@ function RegistrarColheitaConteudo() {
   }
 
   // Cadastra o plantio "já existente" sem sair da tela, mantendo o
-  // canteiro já escolhido no passo 1, e segue direto pro registro da
-  // colheita vinculado a esse plantio recém-criado.
+  // canteiro já escolhido, e já deixa esse plantio escolhido pra colheita.
   async function salvarCadastroRapido() {
-    if (!canteiroId || !cadastroCulturaId) return;
+    if (!escolha.canteiroId || !cadastroCulturaId) return;
     setCadastroSalvando(true);
     setCadastroErro(null);
     try {
       const novo = await criarPlantio({
         cultura_id: cadastroCulturaId,
-        canteiro_id: canteiroId,
+        canteiro_id: escolha.canteiroId,
         origem: "ja_existente",
-        quantidade_inicial: cadastroQuantidade.trim() ? Number(cadastroQuantidade) : null,
+        quantidade_inicial: cadastroQuantidade.trim() ? Number(cadastroQuantidade.replace(",", ".")) : null,
         unidade: cadastroUnidade.trim() || null,
       });
       const culturaEscolhida = culturas.find((c) => c.id === cadastroCulturaId);
-      const novoComCultura: PlantioComCultura = {
+      escolha.adicionarPlantio({
         ...novo,
         cultura_nome: culturaEscolhida?.nome ?? "—",
         cultura_ciclo_produtivo: culturaEscolhida?.ciclo_produtivo ?? "unico",
-      };
-      setPlantios((lista) => [novoComCultura, ...lista]);
+      });
+      setEncerraEscolhido(null);
       setCadastroAberto(false);
-      escolherPlantio(novoComCultura);
     } catch {
       setCadastroErro("Não deu pra cadastrar agora. Confira a internet e tente de novo.");
     } finally {
@@ -202,10 +159,18 @@ function RegistrarColheitaConteudo() {
     }
   }
 
+  function voltarDepoisDeSalvar(codigo: "colheita" | "colheita-offline") {
+    if (relatorioItemId && voltarHref) {
+      router.push(decodeURIComponent(voltarHref));
+      return;
+    }
+    router.push(`/patio/horta?salvo=${codigo}`);
+  }
+
   async function salvar() {
-    if (!canteiroId || !plantioId || !plantioSelecionado) return;
+    if (!escolha.canteiroId || !plantio || peso <= 0) return;
     setSalvando(true);
-    setErroSalvar(null);
+    escolha.lembrarCanteiro();
 
     let fotoUrl: string | null = null;
     if (fotos[0]) {
@@ -217,9 +182,9 @@ function RegistrarColheitaConteudo() {
     }
 
     const registro: NovoRegistroColheita = {
-      canteiro_id: canteiroId,
-      plantio_id: plantioId,
-      cultura: plantioSelecionado.cultura_nome,
+      canteiro_id: escolha.canteiroId,
+      plantio_id: plantio.id,
+      cultura: plantio.cultura_nome,
       peso_kg: peso,
       foto_url: fotoUrl,
       observacao: observacao.trim() ? observacao.trim() : null,
@@ -238,7 +203,7 @@ function RegistrarColheitaConteudo() {
       }
       if (encerraPlantio) {
         try {
-          await marcarStatusPlantio(plantioId, "colhido");
+          await marcarStatusPlantio(plantio.id, "colhido");
         } catch {
           // Colheita já foi salva — se o fechamento do plantio falhar,
           // dá pra fechar depois manualmente pelo Mapa. Não trava a tela.
@@ -246,283 +211,148 @@ function RegistrarColheitaConteudo() {
       }
 
       // Aberta a partir do Relatório do Turno (Sprint A, item 6): vincula
-      // e volta pro relatório em vez da tela de sucesso daqui.
+      // e volta pro relatório.
       if (relatorioItemId) {
         try {
           await vincularRegistroAoItem(relatorioItemId, "registros_colheita", registroId);
         } catch {
           // segue sem o vínculo — o registro já está salvo.
         }
-        if (voltarHref) {
-          router.push(decodeURIComponent(voltarHref));
-          return;
-        }
       }
-      setResultado("ok");
+      voltarDepoisDeSalvar("colheita");
     } catch {
       filaOffline.enfileirar(registro);
       setPendentesOffline(filaOffline.contar());
       // Enfileirado sem internet: sem id pra vincular ao item do
       // Relatório do Turno (limitação conhecida, seção 11e) — volta pro
       // relatório mesmo assim, o item fica sem marcar.
-      if (relatorioItemId && voltarHref) {
-        router.push(decodeURIComponent(voltarHref));
-        return;
-      }
-      setResultado("offline");
+      voltarDepoisDeSalvar("colheita-offline");
     } finally {
       setSalvando(false);
     }
   }
 
-  function recomecar() {
-    setPasso(1);
-    setCanteiroId(null);
-    setPlantios([]);
-    setPlantioId(null);
-    setPeso(1);
-    setFotos([]);
-    setObservacao("");
-    setEncerraPlantio(true);
-    setEncerraTocado(false);
-    setResultado(null);
-    setErroSalvar(null);
-    setCadastroAberto(false);
-  }
-
-  const canteiroSelecionado = canteiros.find((c) => c.id === canteiroId);
-  const plantioSelecionado = plantios.find((p) => p.id === plantioId);
-
-  if (carregando) {
+  if (escolha.carregando) {
     return (
-      <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
-        <p className="text-center text-sm text-zinc-600">Carregando canteiros…</p>
+      <TelaBase titulo="Colher" icone="🧺" voltarHref={fecharHref}>
+        <p className="text-center text-sm text-zinc-600">Carregando…</p>
       </TelaBase>
     );
   }
 
-  if (erroCarregamento) {
+  if (escolha.erro) {
     return (
-      <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
-        <p className="text-center text-sm text-red-700">{erroCarregamento}</p>
+      <TelaBase titulo="Colher" icone="🧺" voltarHref={fecharHref}>
+        <p className="text-center text-sm text-red-700">{escolha.erro}</p>
       </TelaBase>
     );
   }
 
-  if (resultado) {
-    return (
-      <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#2e6b3e] text-2xl text-white">
-            {resultado === "ok" ? "✅" : "📶"}
-          </span>
-          <p className="text-base font-semibold text-zinc-900">
-            {resultado === "ok"
-              ? "Registro salvo!"
-              : "Sem internet agora — guardado no celular"}
-          </p>
-          <p className="max-w-xs text-sm text-zinc-600">
-            {resultado === "ok"
-              ? "Registro de colheita salvo com sucesso."
-              : "Assim que a conexão voltar, este registro é enviado sozinho. Não precisa fazer nada."}
-          </p>
-          <div className="mt-2 flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={recomecar}
-              className="rounded-full bg-[#2e6b3e] px-6 py-3 text-sm font-semibold text-white"
-            >
-              Registrar outra colheita
-            </button>
-            <Link
-              href="/patio/horta"
-              className="rounded-full border-2 border-[#2e6b3e] px-6 py-3 text-sm font-semibold text-[#2e6b3e]"
-            >
-              Voltar pra Horta
-            </Link>
-          </div>
-        </div>
-      </TelaBase>
-    );
-  }
+  const pendencia = !plantio
+    ? escolha.canteiro
+      ? "Escolha o plantio colhido"
+      : "Escolha o canteiro"
+    : peso <= 0
+      ? "Digite quantos kg foram colhidos"
+      : null;
+  const resumo = plantio
+    ? `Salvar: ${formatarNumero(peso)} kg de ${plantio.cultura_nome} · ${canteiro?.nome ?? ""}${encerraPlantio ? " · encerra o plantio" : ""}`
+    : "Salvar";
 
   return (
-    <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
-      <BarraContexto canteiro={canteiroSelecionado} cultura={plantioSelecionado?.cultura_nome ?? null} passo={passo} />
-      <PontosPasso passo={passo} total={TOTAL_PASSOS} />
-
+    <TelaBase titulo="Colher" icone="🧺" voltarHref={fecharHref}>
       {pendentesOffline > 0 && (
         <p className="mb-3 rounded-lg border border-dashed border-zinc-400 bg-white px-3 py-2 text-center text-[11px] text-zinc-600">
           📶 {pendentesOffline} registro(s) esperando internet pra enviar.
         </p>
       )}
 
-      {passo === 1 && (
-        <Passo titulo="Qual canteiro?">
-          <div className="grid grid-cols-2 gap-3">
-            {canteiros.map((c) => (
-              <BotaoGrande
-                key={c.id}
-                icone={iconeTipoCanteiro(c.tipo)}
-                rotulo={c.nome}
-                selecionado={c.id === canteiroId}
-                onClick={() => escolherCanteiro(c.id)}
-              />
-            ))}
-          </div>
-          {canteiros.length === 0 && (
-            <p className="text-center text-sm text-zinc-600">
-              Nenhum canteiro cadastrado ainda. Cadastre pelo menos um canteiro (Mais → Cadastro) pra continuar.
-            </p>
-          )}
-        </Passo>
+      {cadastroAberto && escolha.canteiro ? (
+        <CadastroRapidoPlantio
+          culturas={culturasFiltradas}
+          busca={cadastroBuscaCultura}
+          onBuscar={setCadastroBuscaCultura}
+          culturaId={cadastroCulturaId}
+          onEscolherCultura={setCadastroCulturaId}
+          quantidade={cadastroQuantidade}
+          onMudarQuantidade={setCadastroQuantidade}
+          unidade={cadastroUnidade}
+          onMudarUnidade={setCadastroUnidade}
+          salvando={cadastroSalvando}
+          erro={cadastroErro}
+          onCancelar={() => setCadastroAberto(false)}
+          onSalvar={salvarCadastroRapido}
+        />
+      ) : (
+        <EscolhaPlantioCampos
+          escolha={escolha}
+          iconeContexto="🧺"
+          perguntaPlantio="Qual plantio foi colhido?"
+          semPlantios="Nenhum plantio ativo nesse canteiro."
+          detalhePlantio={(p) => (p.cultura_ciclo_produtivo === "unico" ? "ciclo único" : "ciclo contínuo")}
+          rodapeLista={
+            <button
+              type="button"
+              onClick={abrirCadastroRapido}
+              className="mt-1 text-center text-xs text-zinc-600 underline"
+            >
+              Não achei o plantio (planta que já existia)
+            </button>
+          }
+        />
       )}
 
-      {passo === 2 && (
-        <Passo titulo="Qual plantio foi colhido?">
-          {carregandoPlantios ? (
-            <p className="text-center text-sm text-zinc-600">Carregando…</p>
-          ) : cadastroAberto ? (
-            <CadastroRapidoPlantio
-              culturas={culturasFiltradas}
-              busca={cadastroBuscaCultura}
-              onBuscar={setCadastroBuscaCultura}
-              culturaId={cadastroCulturaId}
-              onEscolherCultura={setCadastroCulturaId}
-              quantidade={cadastroQuantidade}
-              onMudarQuantidade={setCadastroQuantidade}
-              unidade={cadastroUnidade}
-              onMudarUnidade={setCadastroUnidade}
-              salvando={cadastroSalvando}
-              erro={cadastroErro}
-              onCancelar={() => setCadastroAberto(false)}
-              onSalvar={salvarCadastroRapido}
-            />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {plantios.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => escolherPlantio(p)}
-                  className={[
-                    "rounded-lg border-2 px-3 py-2 text-left",
-                    p.id === plantioId ? "border-[#2e6b3e] bg-[#eaf3ea]" : "border-zinc-300 bg-white",
-                  ].join(" ")}
-                >
-                  <span className="block text-sm font-bold text-zinc-900">{p.cultura_nome}</span>
-                  <span className="block text-[11px] text-zinc-500">
-                    {p.cultura_ciclo_produtivo === "unico" ? "ciclo único" : "ciclo contínuo"}
-                  </span>
-                </button>
-              ))}
-              {plantios.length === 0 && (
-                <p className="text-center text-xs text-zinc-500">
-                  Nenhum plantio ativo nesse canteiro ainda.
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={abrirCadastroRapido}
-                className="mt-1 rounded-lg border-2 border-dashed border-zinc-400 bg-white px-3 py-2 text-center text-xs font-bold text-zinc-700"
-              >
-                ➕ Não achei — cadastrar planta que já existia
-              </button>
-            </div>
-          )}
-        </Passo>
-      )}
+      {plantio && !cadastroAberto && (
+        <>
+          <RotuloCampo>Quanto foi colhido?</RotuloCampo>
+          <CampoPeso key={plantio.id} valor={peso} onMudar={setPeso} autoFocus />
 
-      {passo === 3 && (
-        <Passo titulo="Quanto foi colhido?">
-          <CampoPeso valor={peso} onMudar={setPeso} autoFocus />
-          <BotaoAvancar onClick={() => irPara(4)} />
-        </Passo>
-      )}
-
-      {passo === 4 && (
-        <Passo titulo="Fotos da colheita">
-          <SeletorFotos fotos={fotos} onMudar={setFotos} obrigatoria />
-          <BotaoAvancar onClick={() => irPara(5)} desabilitado={fotos.length === 0} />
-        </Passo>
-      )}
-
-      {passo === 5 && (
-        <Passo titulo="Quer contar mais alguma coisa?">
-          <textarea
-            value={observacao}
-            onChange={(e) => setObservacao(e.target.value)}
-            placeholder='Ex.: "praga na folha, precisa de manejo"...'
-            className="min-h-24 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
-          />
-
-          <label className="mt-3 flex items-start gap-2 rounded-lg border-2 border-zinc-300 bg-[#f1efe6] p-3 text-xs text-zinc-700">
+          <label className="mt-3 flex items-start gap-2 rounded-xl border-2 border-zinc-300 bg-white p-3 text-xs text-zinc-700">
             <input
               type="checkbox"
               checked={encerraPlantio}
-              onChange={(e) => {
-                setEncerraPlantio(e.target.checked);
-                setEncerraTocado(true);
-              }}
-              className="mt-0.5 h-4 w-4"
+              onChange={(e) => setEncerraEscolhido(e.target.checked)}
+              className="mt-0.5 h-5 w-5"
             />
             <span>
-              Essa colheita encerra o plantio? (a planta some do canteiro depois dessa colheita)
+              <b>Essa colheita encerra o plantio?</b> (a planta sai do canteiro)
               <span className="mt-0.5 block text-[10px] text-zinc-500">
-                Pré-marcado conforme o ciclo da cultura — confira ou troque conforme o que aconteceu de verdade.
+                Já vem marcado conforme o ciclo da cultura. Confira e troque se foi diferente.
               </span>
             </span>
           </label>
 
-          <div className="mt-4 flex flex-col gap-2">
-            <BotaoAvancar onClick={() => irPara(6)} texto="Continuar" />
-          </div>
-        </Passo>
-      )}
-
-      {passo === 6 && (
-        <Passo titulo="Confere antes de salvar">
-          <div className="rounded-xl border-2 border-zinc-800 bg-white p-3 text-sm">
-            <LinhaResumo rotulo="Canteiro" valor={canteiroSelecionado?.nome ?? "—"} onEditar={() => irPara(1)} />
-            <LinhaResumo rotulo="Plantio" valor={plantioSelecionado?.cultura_nome ?? "—"} onEditar={() => irPara(2)} />
-            <LinhaResumo rotulo="Peso colhido" valor={`${peso} kg`} onEditar={() => irPara(3)} />
-            <LinhaResumo
-              rotulo="Fotos"
-              valor={fotos.length === 0 ? "sem foto" : `${fotos.length} anexada(s)`}
-              onEditar={() => irPara(4)}
-            />
-            <LinhaResumo
-              rotulo="Encerra o plantio?"
-              valor={encerraPlantio ? "sim" : "não"}
-              onEditar={() => irPara(5)}
-              ultima
-            />
-          </div>
-
-          {erroSalvar && <p className="mt-3 text-center text-xs text-red-700">{erroSalvar}</p>}
-
-          <button
-            type="button"
-            disabled={salvando}
-            onClick={salvar}
-            className="mt-4 w-full rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-3 text-sm font-bold text-[#2e6b3e] disabled:opacity-60"
+          <BlocoRecolhivel
+            resumo={
+              [fotos.length > 0 ? `${fotos.length} foto(s)` : null, observacao.trim() ? "observação" : null]
+                .filter(Boolean)
+                .join(", ") || null
+            }
           >
-            {salvando ? "Salvando…" : "✅ Salvar registro"}
-          </button>
-          <p className="mt-2 text-center text-[10px] text-zinc-500">
-            📶 Sem internet agora? Sem problema — fica guardado no celular e envia sozinho quando voltar o sinal.
-          </p>
-        </Passo>
+            <div>
+              <RotuloCampo>Fotos</RotuloCampo>
+              <SeletorFotos fotos={fotos} onMudar={setFotos} />
+            </div>
+            <div>
+              <RotuloCampo>Observação</RotuloCampo>
+              <textarea
+                value={observacao}
+                onChange={(e) => setObservacao(e.target.value)}
+                placeholder='Ex.: "praga na folha, precisa de manejo"...'
+                className="min-h-20 w-full rounded-lg border-2 border-zinc-300 p-3 text-sm"
+              />
+            </div>
+          </BlocoRecolhivel>
+        </>
       )}
 
-      {passo > 1 && !resultado && (
-        <button
-          type="button"
-          onClick={() => irPara(passo - 1)}
-          className="mt-4 block w-full text-center text-xs text-zinc-500 underline"
-        >
-          voltar
-        </button>
+      {!cadastroAberto && (
+        <>
+          <BotaoSalvar resumo={resumo} pendencia={pendencia} salvando={salvando} onClick={salvar} />
+          <p className="mt-2 text-center text-[10px] text-zinc-500">
+            📶 Sem internet? Fica guardado no celular e envia sozinho quando voltar o sinal.
+          </p>
+        </>
       )}
     </TelaBase>
   );
@@ -532,7 +362,7 @@ export default function RegistrarColheitaPage() {
   return (
     <Suspense
       fallback={
-        <TelaBase titulo="Registrar colheita" icone="🧺" voltarHref="/patio/horta">
+        <TelaBase titulo="Colher" icone="🧺" voltarHref="/patio/horta">
           <p className="text-center text-sm text-zinc-600">Carregando…</p>
         </TelaBase>
       }
@@ -543,7 +373,7 @@ export default function RegistrarColheitaPage() {
 }
 
 // Formulário inline de cadastro rápido (origem="ja_existente"), sem sair
-// da tela de Registrar colheita — mesmo canteiro já escolhido no passo 1.
+// da tela de Colher — mesmo canteiro já escolhido.
 // Ver HANDOFF_HORTA_COMPLETO.md, seção 3.6, e pedido do usuário, 2026-08-28.
 function CadastroRapidoPlantio({
   culturas,
@@ -652,24 +482,6 @@ function CadastroRapidoPlantio({
           {salvando ? "Salvando…" : "✅ Cadastrar e continuar"}
         </button>
       </div>
-    </div>
-  );
-}
-
-function BarraContexto({
-  canteiro,
-  cultura,
-  passo,
-}: {
-  canteiro?: Canteiro;
-  cultura: string | null;
-  passo: number;
-}) {
-  if (passo === 1) return null;
-  return (
-    <div className="mb-2 flex justify-between rounded-lg border border-zinc-300 bg-[#f1efe6] px-3 py-1 text-[11px] text-zinc-600">
-      <span>🌻 {canteiro?.nome ?? "—"}</span>
-      {cultura && <span>{cultura}</span>}
     </div>
   );
 }

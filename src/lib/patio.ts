@@ -387,7 +387,8 @@ export async function plantiosPendentesDoCanteiro(
     .from("plantios")
     .select("id, status, culturas(nome)")
     .eq("canteiro_id", canteiroId)
-    .in("status", ["ativo", "germinando"]);
+    .in("status", ["ativo", "germinando"])
+    .is("anulado_em", null);
 
   if (error) throw error;
   type Linha = { id: string; status: string; culturas: { nome: string }[] | { nome: string } | null };

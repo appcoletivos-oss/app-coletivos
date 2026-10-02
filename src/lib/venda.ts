@@ -19,6 +19,7 @@ export async function listarColheitasRecentes(limite = 20): Promise<ColheitaRece
   const { data, error } = await supabase
     .from("registros_colheita")
     .select("id, cultura, peso_kg, registrado_em")
+    .is("anulado_em", null)
     .order("registrado_em", { ascending: false })
     .limit(limite);
 

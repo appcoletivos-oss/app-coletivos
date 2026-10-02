@@ -43,6 +43,13 @@ function dataRecife(iso: string): string {
   }).format(new Date(iso));
 }
 
+// Data de hoje (YYYY-MM-DD) em America/Recife — pra data_inicio de
+// plantio etc. sem cair no dia seguinte depois das 21h (UTC). Chamar só
+// pós-mount (handler/useEffect), nunca no render.
+export function dataHojeRecife(): string {
+  return dataRecife(new Date().toISOString());
+}
+
 // Antes das 12:00 (Recife) = manhã; da 12:00 em diante = tarde — regra
 // fechada da sprint (seção 3 do sprint doc). Saída não define turno.
 export function turnoPeloHorario(iso: string): TurnoPlanejamento {

@@ -144,7 +144,9 @@ export function CampoPeso({
   onMudar: (novo: number) => void;
   autoFocus?: boolean;
 }) {
-  const [texto, setTexto] = useState(() => formatarPeso(valor));
+  // valor 0 começa com o campo vazio (Sprint A.1: a pessoa digita direto,
+  // sem apagar um "0" ou "1" de partida antes).
+  const [texto, setTexto] = useState(() => (valor ? formatarPeso(valor) : ""));
 
   return (
     <div className="flex items-center justify-center gap-2 rounded-xl border-2 border-zinc-800 bg-[#f1efe6] py-6">
@@ -161,7 +163,8 @@ export function CampoPeso({
           const numero = Number(bruto.replace(",", "."));
           if (!Number.isNaN(numero)) onMudar(numero);
         }}
-        onBlur={() => setTexto(formatarPeso(valor))}
+        onBlur={() => setTexto(valor ? formatarPeso(valor) : "")}
+        placeholder="0"
         className="w-24 border-b-2 border-zinc-800 bg-transparent text-center text-3xl font-bold tabular-nums text-zinc-900 focus:outline-none"
       />
       <span className="text-lg font-bold text-zinc-600">kg</span>
@@ -311,4 +314,147 @@ export function LinhaResumo({
       </button>
     </div>
   );
+}
+
+// -----------------------------------------------------------------------------
+// Sprint A.1 — Menos toques (SPRINT_A1_MENOS_TOQUES.md, seção 2). Peças pra
+// telas de registro em TELA ÚNICA: o essencial na frente, o resto recolhido,
+// o botão Salvar já mostrando o resumo (sem tela "Confere antes de salvar"),
+// escolhas em botões grandes e o contexto já respondido como cabeçalho.
+// `PontosPasso`/`Passo`/`LinhaResumo` continuam aqui só pras telas que
+// ainda não passaram pra tela única.
+// -----------------------------------------------------------------------------
+
+// P2 — bloco "＋ Mais detalhes", fechado por padrão. Mostra quantos campos
+// opcionais já foram preenchidos lá dentro, pra a pessoa não esquecer que
+// mexeu (ex.: "2 fotos").
+export function BlocoRecolhivel({
+  titulo = "Mais detalhes",
+  resumo,
+  children,
+}: {
+  titulo?: string;
+  resumo?: string | null;
+  children: ReactNode;
+}) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div className="mt-3 rounded-xl border-2 border-dashed border-zinc-300 bg-white">
+      <button
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        aria-expanded={aberto}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-left text-xs font-bold text-zinc-700"
+      >
+        <span>
+          {aberto ? "－" : "＋"} {titulo}
+          {!aberto && resumo ? <span className="ml-1 font-normal text-zinc-500">({resumo})</span> : null}
+        </span>
+        <span className="text-zinc-400">{aberto ? "▲" : "▼"}</span>
+      </button>
+      {aberto && <div className="flex flex-col gap-3 border-t-2 border-dashed border-zinc-200 p-3">{children}</div>}
+    </div>
+  );
+}
+
+// P3 — botão Salvar que já é o resumo do que vai ser gravado ("Salvar: 3 kg
+// de Rúcula · Canteiro 5"). `pendencia` troca o texto quando ainda falta
+// algo obrigatório, em vez de só ficar cinza sem explicar.
+export function BotaoSalvar({
+  resumo,
+  pendencia,
+  salvando,
+  onClick,
+}: {
+  resumo: string;
+  pendencia?: string | null;
+  salvando: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        disabled={salvando || !!pendencia}
+        onClick={onClick}
+        className="w-full rounded-xl bg-[#2e6b3e] px-3 py-3.5 text-sm font-bold text-white disabled:opacity-40"
+      >
+        {salvando ? "Salvando…" : pendencia ? pendencia : `✅ ${resumo}`}
+      </button>
+    </div>
+  );
+}
+
+// P7 — escolha em botões/chips grandes, não em lista. `colunas` = 0 deixa
+// os chips quebrarem linha soltos (bom pra rótulos de tamanho variado,
+// como motivos de perda).
+export function SeletorBotoes<T extends string>({
+  opcoes,
+  valor,
+  onEscolher,
+  colunas = 0,
+}: {
+  opcoes: { valor: T; rotulo: string; icone?: string }[];
+  valor: T | null;
+  onEscolher: (v: T) => void;
+  colunas?: 0 | 2 | 3 | 4 | 5;
+}) {
+  const grade =
+    colunas === 0
+      ? "flex flex-wrap gap-1.5"
+      : `grid gap-1.5 ${{ 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" }[colunas]}`;
+  return (
+    <div className={grade}>
+      {opcoes.map((o) => {
+        const selecionado = o.valor === valor;
+        return (
+          <button
+            key={o.valor}
+            type="button"
+            onClick={() => onEscolher(o.valor)}
+            aria-pressed={selecionado}
+            className={[
+              "rounded-xl border-2 px-3 py-2.5 text-center text-xs font-bold",
+              selecionado ? "border-[#2e6b3e] bg-[#eaf3ea] text-[#2e6b3e]" : "border-zinc-300 bg-white text-zinc-700",
+            ].join(" ")}
+          >
+            {o.icone && <span className={colunas === 0 ? "mr-1" : "mb-0.5 block text-lg"}>{o.icone}</span>}
+            {o.rotulo}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// P4 — o que já foi respondido (canteiro, plantio, item do relatório) vira
+// cabeçalho da tela, com um "trocar" discreto em vez de ser perguntado de
+// novo.
+export function CabecalhoContexto({
+  texto,
+  onTrocar,
+}: {
+  texto: string;
+  onTrocar?: () => void;
+}) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] px-3 py-2.5">
+      <span className="text-sm font-bold text-[#2e6b3e]">{texto}</span>
+      {onTrocar && (
+        <button type="button" onClick={onTrocar} className="shrink-0 text-[11px] text-zinc-600 underline">
+          trocar
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Rótulo pequeno em cima de um campo da tela única.
+export function RotuloCampo({ children }: { children: ReactNode }) {
+  return <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-zinc-500">{children}</p>;
+}
+
+// Formata número pro resumo do botão Salvar ("2,5"), sem casas sobrando.
+export function formatarNumero(valor: number): string {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
