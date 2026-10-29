@@ -19,6 +19,7 @@
 // com Next 16 + useOffline) — por isso a semana de partida só é calculada
 // depois de montar, nunca direto no corpo do componente.
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   TURNOS_PLANEJAMENTO,
@@ -153,6 +154,15 @@ export default function PlanejamentoSemanalPage() {
         />
         Mostrar fim de semana
       </label>
+
+      {podeEditar && (
+        <Link
+          href="/patio/agenda/lancar-semana"
+          className="mb-4 block w-full rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-2.5 text-center text-xs font-bold text-[#2e6b3e]"
+        >
+          🗓️ Lançar a semana (colar mensagem do grupo)
+        </Link>
+      )}
 
       {!podeEditar && !carregando && (
         <p className="mb-4 rounded-lg border border-dashed border-zinc-400 bg-[#f1efe6] px-3 py-2 text-center text-[11px] text-zinc-600">

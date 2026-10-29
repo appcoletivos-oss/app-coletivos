@@ -97,6 +97,14 @@ export default function AgendaPage() {
       >
         📝 Planejamento semanal
       </Link>
+      {podeEditar && (
+        <Link
+          href="/patio/agenda/lancar-semana"
+          className="mb-3 block w-full rounded-xl border-2 border-[#2e6b3e] bg-[#eaf3ea] py-2.5 text-center text-xs font-bold text-[#2e6b3e]"
+        >
+          🗓️ Lançar a semana (colar mensagem do grupo)
+        </Link>
+      )}
 
       {carregando && <p className="text-center text-sm text-zinc-600">Carregando…</p>}
       {erro && <p className="text-center text-sm text-red-700">{erro}</p>}
