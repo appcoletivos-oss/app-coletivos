@@ -34,7 +34,7 @@ function horaRecife(iso: string): number {
 
 // Data local (YYYY-MM-DD) de um timestamp ISO, em America/Recife. Usa o
 // locale en-CA porque Intl já devolve nesse formato (sem parsing manual).
-function dataRecife(iso: string): string {
+export function dataRecife(iso: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Recife",
     year: "numeric",

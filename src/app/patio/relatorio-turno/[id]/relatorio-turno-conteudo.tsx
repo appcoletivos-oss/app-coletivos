@@ -19,6 +19,7 @@
 // registrar_esvaziamento_caixa barram a equipe de qualquer jeito); a
 // equipe continua marcando o item como feito/não feito.
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -33,6 +34,10 @@ import {
   reabrirRelatorio,
 } from "@/lib/relatorio-turno";
 import { obterMeuMembro } from "@/lib/auth";
+import { lerRascunhoRelato, listarPropostasDoRelatorio, type PropostaResumo } from "@/lib/relato";
+import { ROTULO_TIPO } from "@/lib/relato-campos";
+import { SeloParaConferir } from "@/components/selo-para-conferir";
+import { FotosDoacaoPendentes } from "@/components/fotos-doacao-pendentes";
 import type { ItemRelatorioTurno, MembroDoTurno, RelatorioTurno, TipoRegistroRelatorio } from "@/lib/types";
 import { TelaBase } from "@/components/fluxo-registro";
 
@@ -75,6 +80,11 @@ export function RelatorioTurnoConteudo() {
   const [itens, setItens] = useState<ItemRelatorioTurno[]>([]);
   const [equipe, setEquipe] = useState<MembroDoTurno[]>([]);
   const [ehGestor, setEhGestor] = useState(false);
+  // Relato guardado sem internet (B3): faixa "Você tem um relato para enviar".
+  const [relatoGuardado, setRelatoGuardado] = useState(false);
+  // Propostas do relato (B4, item 6): quem relatou vê pendente/aprovada/
+  // rejeitada. A RLS já mostra só as próprias pra equipe.
+  const [propostas, setPropostas] = useState<PropostaResumo[]>([]);
 
   const [novoTexto, setNovoTexto] = useState("");
   const [criando, setCriando] = useState(false);
@@ -87,15 +97,18 @@ export function RelatorioTurnoConteudo() {
         setErro("Relatório não encontrado.");
         return;
       }
-      const [listaItens, listaEquipe, meuMembro] = await Promise.all([
+      const [listaItens, listaEquipe, meuMembro, listaPropostas] = await Promise.all([
         listarItensDoRelatorio(rel.id),
         buscarEquipeDoTurno(rel.data, rel.turno),
         obterMeuMembro(),
+        listarPropostasDoRelatorio(rel.id).catch(() => []),
       ]);
+      setPropostas(listaPropostas);
       setRelatorio(rel);
       setItens(listaItens);
       setEquipe(listaEquipe);
       setEhGestor(meuMembro?.papel === "coordenacao" || meuMembro?.papel === "consultor");
+      setRelatoGuardado(lerRascunhoRelato(rel.id)?.aguardando_internet === true);
       setErro(null);
     } catch {
       setErro("Não deu pra carregar o relatório agora. Confira a internet e tente de novo.");
@@ -173,6 +186,7 @@ export function RelatorioTurnoConteudo() {
 
   return (
     <TelaBase titulo="Relatório do turno" icone="📋" voltarHref="/patio/relatorio-turno">
+      <SeloParaConferir />
       <div className="mb-3 rounded-xl border-2 border-zinc-800 bg-white p-3">
         <p className="text-sm font-bold text-zinc-900">
           {formatarDataBR(relatorio.data)} · {relatorio.turno === "manha" ? "Manhã" : "Tarde"}
@@ -182,6 +196,60 @@ export function RelatorioTurnoConteudo() {
         </p>
         {bloqueado && <p className="mt-1 text-[11px] font-bold text-zinc-500">🔒 Fechado — somente leitura.</p>}
       </div>
+
+      {!bloqueado && relatoGuardado && (
+        <Link
+          href={`/patio/relatorio-turno/${relatorio.id}/relato`}
+          className="mb-3 block rounded-xl border-2 border-dashed border-amber-500 bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-900"
+        >
+          📶 Você tem um relato para enviar →
+        </Link>
+      )}
+
+      {!bloqueado && (
+        <Link
+          href={`/patio/relatorio-turno/${relatorio.id}/relato`}
+          className="mb-4 block rounded-xl bg-[#2e6b3e] py-4 text-center text-sm font-bold text-white"
+        >
+          📝 Contar como foi o turno
+        </Link>
+      )}
+
+      {propostas.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-2 text-xs font-bold text-zinc-800">Do relato, pra coordenação conferir</p>
+          <div className="flex flex-col gap-1.5">
+            {propostas.map((p) => (
+              <div key={p.id} className="rounded-lg border border-zinc-300 bg-white p-2 text-[11px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-zinc-800">
+                    {ROTULO_TIPO[p.tipo].icone} {ROTULO_TIPO[p.tipo].rotulo}
+                  </span>
+                  <span
+                    className={[
+                      "rounded-full px-2 py-0.5 text-[9px] font-bold",
+                      p.status === "aprovada"
+                        ? "bg-[#eaf3ea] text-[#2e6b3e]"
+                        : p.status === "rejeitada"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-amber-100 text-amber-800",
+                    ].join(" ")}
+                  >
+                    {p.status}
+                  </span>
+                </div>
+                <p className="italic text-zinc-500">“{p.trecho_origem}”</p>
+                {p.motivo_rejeicao && <p className="text-red-700">Motivo: {p.motivo_rejeicao}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <FotosDoacaoPendentes
+        ids={propostas.filter((p) => p.tipo === "doacao" && p.status === "aprovada" && p.registro_id_gerado).map((p) => p.registro_id_gerado as string)}
+        titulo="📷 Fotos das doações deste turno"
+      />
 
       <div className="flex flex-col gap-2">
         {itens.map((item) => (
@@ -226,6 +294,17 @@ export function RelatorioTurnoConteudo() {
           {fechando ? "…" : bloqueado ? "🔓 Reabrir relatório" : "🔒 Fechar relatório"}
         </button>
       )}
+
+      {/* Rodapé (Sprint B, B1): esta tela virou a home do turno; o resto do
+          Pátio continua em /patio. */}
+      <div className="mt-6 flex items-center justify-between border-t border-dashed border-zinc-300 pt-3">
+        <Link href="/patio/meu-ponto" className="text-xs font-bold text-zinc-600 underline">
+          ⏰ Bater ponto de saída
+        </Link>
+        <Link href="/patio" className="text-xs font-bold text-zinc-600 underline">
+          Outras telas →
+        </Link>
+      </div>
     </TelaBase>
   );
 }

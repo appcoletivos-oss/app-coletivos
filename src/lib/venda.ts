@@ -46,6 +46,7 @@ export async function criarDoacaoAlimento(dados: NovaDoacaoAlimento): Promise<Do
       unidade: dados.unidade?.trim() || "kg",
       destino: dados.destino?.trim() || null,
       foto_url: dados.foto_url,
+      foto_pendente: dados.foto_pendente ?? false,
       observacao: dados.observacao?.trim() || null,
       registrado_por: sessao.session.user.id,
     })

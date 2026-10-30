@@ -199,6 +199,8 @@ export interface NovoRegistroManejo {
   tipo_carrinho_id?: string | null;
   quantidade_carrinhos?: number | null;
   peso_kg_calculado?: number | null;
+  // Sprint B (B2b/B4): o relato não disse o tipo e o app assumiu o azul.
+  tipo_carrinho_assumido?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -853,7 +855,8 @@ export interface DoacaoAlimento {
   quantidade: number | null;
   unidade: string;
   destino: string | null;
-  foto_url: string;
+  foto_url: string | null;
+  foto_pendente: boolean;
   observacao: string | null;
   registrado_por: string | null;
   criado_em: string;
@@ -869,7 +872,9 @@ export interface NovaDoacaoAlimento {
   quantidade?: number | null;
   unidade?: string;
   destino?: string | null;
-  foto_url: string;
+  // null só com foto_pendente (doação aprovada pelo Relato do turno, B2c).
+  foto_url: string | null;
+  foto_pendente?: boolean;
   observacao?: string | null;
 }
 

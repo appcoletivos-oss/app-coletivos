@@ -62,6 +62,22 @@ export async function criarCultura(dados: NovaCultura): Promise<Cultura> {
   return data;
 }
 
+// Cadastro mínimo pelo nome (A.1, seção 9b item 5). revisar = true vira
+// "cultura nova pra revisar" na fila da coordenação (e é obrigatório pra
+// equipe pela RLS): Registrar plantio, "Seguir mesmo assim". revisar =
+// false só quando a coordenação decidiu na fila ("Cadastrar 'X'").
+export async function criarCulturaMinima(nome: string, revisar: boolean): Promise<Cultura> {
+  await requerSessao();
+  const { data, error } = await supabase
+    .from("culturas")
+    .insert({ nome: nome.trim(), ciclo_produtivo: "unico", revisar })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function atualizarCultura(id: string, dados: NovaCultura): Promise<void> {
   await requerSessao();
   const { error } = await supabase.from("culturas").update(dadosCultura(dados)).eq("id", id);

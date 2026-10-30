@@ -28,13 +28,13 @@ export default function CriarPinPage() {
         return;
       }
       if (temPin()) {
-        router.replace("/patio");
+        router.replace("/patio/hoje");
         return;
       }
       const membro = await obterMeuMembro();
       if (cancelado) return;
       if (!membro) {
-        router.replace("/patio"); // o gate mostra a mensagem de "sem vínculo"
+        router.replace("/patio/hoje"); // o gate mostra a mensagem de "sem vínculo"
         return;
       }
       setVerificando(false);
@@ -59,7 +59,7 @@ export default function CriarPinPage() {
     setSalvando(true);
     try {
       await definirPin(pin);
-      router.replace("/patio");
+      router.replace("/patio/hoje");
     } catch {
       setErro("Não deu pra salvar o PIN. Tente de novo.");
       setSalvando(false);

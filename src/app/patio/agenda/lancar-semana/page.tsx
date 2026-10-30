@@ -182,7 +182,8 @@ export default function LancarSemanaPage() {
             {texto.length.toLocaleString("pt-BR")} / {LIMITE_TEXTO_SEMANA.toLocaleString("pt-BR")}
           </p>
           <p className="mb-3 text-[10px] text-zinc-500">
-            O texto é lido por uma IA (Anthropic) para organizar a semana. Nada é gravado antes de você conferir.
+            O texto é lido por uma IA (Anthropic) para organizar a semana. Os primeiros nomes da equipe que
+            aparecem na mensagem também são lidos. Nada é gravado antes de você conferir.
           </p>
           {erro && <p className="mb-3 text-center text-sm text-red-700">{erro}</p>}
           <button

@@ -15,8 +15,11 @@ export default function Home() {
       </div>
 
       <div className="mt-10 grid w-full max-w-md gap-5">
+        {/* /patio/hoje decide pelo papel (equipe/coordenação: ponto e depois
+            checklist; consultor: /patio). Esta página é estática e não
+            conhece a sessão, então a decisão fica lá (Sprint B, B1). */}
         <ModuleCard
-          href="/patio"
+          href="/patio/hoje"
           icon={<LeafIcon />}
           title="Pátio de Compostagem"
           description="Produção, ciclo do composto, doações e ponto da equipe."

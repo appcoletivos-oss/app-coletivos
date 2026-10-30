@@ -31,7 +31,7 @@ export default function DesbloquearPage() {
         return;
       }
       if (pinDesbloqueado()) {
-        router.replace("/patio");
+        router.replace("/patio/hoje");
         return;
       }
       if (!cancelado) setVerificando(false);
@@ -48,7 +48,7 @@ export default function DesbloquearPage() {
     const ok = await validarPin(pin);
     if (ok) {
       marcarDesbloqueado();
-      router.replace("/patio");
+      router.replace("/patio/hoje");
       return;
     }
     setErro(true);

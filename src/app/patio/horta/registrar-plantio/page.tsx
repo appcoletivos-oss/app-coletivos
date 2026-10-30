@@ -29,10 +29,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { listarCanteiros } from "@/lib/patio";
 import { iconeTipoCanteiro } from "@/lib/horta";
-import { criarCultura, listarCulturasAtivas } from "@/lib/culturas";
+import { criarCulturaMinima, listarCulturasAtivas } from "@/lib/culturas";
 import { calcularPrevisaoColheita, criarPlantios } from "@/lib/plantios";
 import { dataHojeRecife, vincularPlantiosAoItem } from "@/lib/relatorio-turno";
-import { obterMeuMembro } from "@/lib/auth";
 import { guardarPadrao, lembrarRecentes, lerPadrao, lerRecentes, ordenarPorRecentes } from "@/lib/recentes";
 import { LISTA_RECENTES_CANTEIROS } from "@/components/escolha-plantio";
 import type { Canteiro, Cultura, NovoPlantio, OrigemPlantio } from "@/lib/types";
@@ -101,9 +100,6 @@ function RegistrarPlantioConteudo() {
   const [canteiros, setCanteiros] = useState<Canteiro[]>([]);
   const [culturas, setCulturas] = useState<Cultura[]>([]);
   const [culturasRecentes, setCulturasRecentes] = useState<string[]>([]);
-  // Cadastro de cultura é só de coordenação/consultor (RLS de `culturas`,
-  // migration 20260827130000) — pra equipe a tela orienta a pedir.
-  const [podeCadastrarCultura, setPodeCadastrarCultura] = useState(false);
 
   const [canteiroId, setCanteiroId] = useState<string | null>(null);
   const [linhas, setLinhas] = useState<LinhaConsorcio[]>(() => [linhaVazia(null)]);
@@ -135,14 +131,6 @@ function RegistrarPlantioConteudo() {
         if (!cancelado) setCarregando(false);
       }
     })();
-
-    obterMeuMembro()
-      .then((m) => {
-        if (!cancelado) setPodeCadastrarCultura(m?.papel === "coordenacao" || m?.papel === "consultor");
-      })
-      .catch(() => {
-        // sem papel conhecido: não oferece o cadastro (a RLS barraria).
-      });
 
     return () => {
       cancelado = true;
@@ -177,12 +165,12 @@ function RegistrarPlantioConteudo() {
     setLinhas((atual) => (atual.length <= 1 ? atual : atual.filter((l) => l.chave !== chave)));
   }
 
-  // Cadastro mínimo de cultura (Sprint A.1, itens 3.4 e 4): só o nome. O
-  // resto da ficha (ciclo, dias de germinação/colheita...) fica pra depois,
-  // em Mais → Cadastro → Culturas. ciclo_produtivo vai "unico", que é o
-  // mesmo padrão da coluna no banco.
+  // Cadastro mínimo de cultura (Sprint A.1, itens 3.4 e 4, e 9b item 5):
+  // só o nome, por qualquer papel, sempre com revisar = true (vira "cultura
+  // nova pra revisar" no selo "Para conferir"; a RLS exige pra equipe). O
+  // resto da ficha fica pra Mais → Cadastro → Culturas.
   async function cadastrarCultura(nome: string): Promise<Cultura> {
-    const nova = await criarCultura({ nome, ciclo_produtivo: "unico" });
+    const nova = await criarCulturaMinima(nome, true);
     setCulturas((lista) => [...lista, nova].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")));
     return nova;
   }
@@ -313,7 +301,6 @@ function RegistrarPlantioConteudo() {
             indice={indice}
             total={linhas.length}
             culturas={culturasOrdenadas}
-            podeCadastrarCultura={podeCadastrarCultura}
             onEscolherCultura={(c) => escolherCultura(l.chave, c)}
             onTrocarCultura={() => atualizarLinha(l.chave, { culturaId: null })}
             onCadastrarCultura={cadastrarCultura}
@@ -342,7 +329,6 @@ function LinhaPlanta({
   indice,
   total,
   culturas,
-  podeCadastrarCultura,
   onEscolherCultura,
   onTrocarCultura,
   onCadastrarCultura,
@@ -353,7 +339,6 @@ function LinhaPlanta({
   indice: number;
   total: number;
   culturas: Cultura[];
-  podeCadastrarCultura: boolean;
   onEscolherCultura: (c: Cultura) => void;
   onTrocarCultura: () => void;
   onCadastrarCultura: (nome: string) => Promise<Cultura>;
@@ -396,7 +381,6 @@ function LinhaPlanta({
         <EscolhaCultura
           culturas={culturas}
           autoFocus={indice > 0}
-          podeCadastrar={podeCadastrarCultura}
           onEscolher={onEscolherCultura}
           onCadastrar={onCadastrarCultura}
         />
@@ -436,18 +420,17 @@ function LinhaPlanta({
 }
 
 // Escolha de cultura dentro da própria linha (sem sub-tela). As usadas por
-// último vêm primeiro; a busca filtra a lista completa; "não achei"
-// cadastra só com o nome digitado na busca.
+// último vêm primeiro; a busca filtra a lista completa; nome que não
+// existe mostra o alerta "não está cadastrada" ("Seguir mesmo assim"
+// cadastra só com o nome digitado, a revisar).
 function EscolhaCultura({
   culturas,
   autoFocus,
-  podeCadastrar,
   onEscolher,
   onCadastrar,
 }: {
   culturas: Cultura[];
   autoFocus: boolean;
-  podeCadastrar: boolean;
   onEscolher: (c: Cultura) => void;
   onCadastrar: (nome: string) => Promise<Cultura>;
 }) {
@@ -504,22 +487,29 @@ function EscolhaCultura({
         )}
       </div>
 
+      {/* Mesmo alerta do Relato do turno (Sprint B): escolher uma que
+          existe ou seguir mesmo assim (cria a cultura mínima, a revisar). */}
       {alvo && !nomeExato && (
-        <div className="mt-2">
-          {podeCadastrar ? (
+        <div className="mt-2 rounded-lg border-2 border-red-300 bg-red-50 p-2">
+          <p className="text-[11px] font-bold text-red-800">⚠️ Esta cultura não está cadastrada: “{busca.trim()}”</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={cadastrando}
+              onClick={() => setBusca("")}
+              className="rounded-lg border-2 border-zinc-800 bg-white px-2.5 py-1 text-[11px] font-bold text-zinc-800 disabled:opacity-40"
+            >
+              Escolher uma que existe
+            </button>
             <button
               type="button"
               disabled={cadastrando}
               onClick={cadastrar}
-              className="w-full rounded-lg border-2 border-dashed border-zinc-400 bg-white px-3 py-2 text-xs font-bold text-zinc-700 disabled:opacity-50"
+              className="rounded-lg border-2 border-zinc-300 bg-white px-2.5 py-1 text-[11px] font-bold text-zinc-600 disabled:opacity-40"
             >
-              {cadastrando ? "Cadastrando…" : `Não achei: cadastrar “${busca.trim()}”`}
+              {cadastrando ? "Cadastrando…" : "Seguir mesmo assim"}
             </button>
-          ) : (
-            <p className="text-[11px] text-zinc-500">
-              Não achou? Peça pra coordenação cadastrar a cultura (Mais → Cadastro → Culturas).
-            </p>
-          )}
+          </div>
           {erro && <p className="mt-1 text-[11px] text-red-700">{erro}</p>}
         </div>
       )}

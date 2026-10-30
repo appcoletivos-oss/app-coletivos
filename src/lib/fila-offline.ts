@@ -15,6 +15,9 @@
 export interface FilaOffline<T> {
   enfileirar: (registro: T) => void;
   contar: () => number;
+  // Só leitura (ex.: /patio/hoje confere se a entrada de hoje está
+  // esperando internet, pra não mandar a pessoa bater de novo).
+  listar: () => T[];
   tentarEnviar: (
     // Promise<unknown>, não Promise<void>: algumas funções de salvar
     // passadas aqui agora devolvem o id da linha criada (ex.:
@@ -81,5 +84,5 @@ export function criarFilaOffline<T>(chave: string): FilaOffline<T> {
     return { enviados, restantes: restantes.length };
   }
 
-  return { enfileirar, contar, tentarEnviar };
+  return { enfileirar, contar, listar: lerFila, tentarEnviar };
 }

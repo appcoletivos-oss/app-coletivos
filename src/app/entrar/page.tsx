@@ -28,7 +28,7 @@ export default function EntrarPage() {
     let cancelado = false;
     (async () => {
       if (await temSessao()) {
-        router.replace("/patio");
+        router.replace("/patio/hoje");
         return;
       }
       if (!cancelado) setVerificando(false);
@@ -69,7 +69,7 @@ export default function EntrarPage() {
       } else {
         await entrarComEmail(email, senha);
       }
-      router.replace("/patio");
+      router.replace("/patio/hoje");
     } catch {
       setErro(
         modo === "criar"

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OcorrenciasBanner } from "./ocorrencias-banner";
+import { SeloParaConferir } from "@/components/selo-para-conferir";
 
 // Módulo 1 (Pátio de Compostagem). Os 6 blocos vêm do wireframe (estrutura
 // fechada, rodada 7) — "Compostagem" (Registrar alimentação), "Horta"
@@ -26,6 +27,8 @@ export default function PatioPage() {
       </div>
 
       <OcorrenciasBanner />
+
+      <SeloParaConferir />
 
       <Link
         href="/patio/relatorio-turno"

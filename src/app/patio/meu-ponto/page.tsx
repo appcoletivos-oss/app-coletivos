@@ -18,7 +18,14 @@
 // Escala da semana e banco de horas são calculados no cliente a partir de
 // eventos_agenda (turno_trabalho) e pontos — sem tabela própria de banco de
 // horas nesta versão (ver lib/ponto.ts, calcularBancoDeHoras).
+//
+// ?voltar= (Sprint B, item B1): depois de salvar uma ENTRADA (online, na
+// fila offline ou pendente por fora do raio), navega pra esse caminho —
+// é como /patio/hoje leva a pessoa do ponto direto pro checklist. Só vale
+// caminho interno do Pátio (ver caminhoVoltarSeguro); qualquer outro valor
+// é ignorado e a tela fica como sempre foi.
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { obterMeuMembro } from "@/lib/auth";
 import { listarMembrosAtivos } from "@/lib/equipe";
@@ -27,6 +34,7 @@ import {
   calcularBancoDeHoras,
   calcularDistanciaMetros,
   decidirPonto,
+  filaPontosOffline as filaOffline,
   limitesDaSemana,
   listarPontosDaSemana,
   listarPontosPendentes,
@@ -37,11 +45,23 @@ import {
   type CoordenadaAtual,
 } from "@/lib/ponto";
 import { rotuloTurno } from "@/lib/agenda";
-import { criarFilaOffline } from "@/lib/fila-offline";
 import type { EventoAgenda, LocalTrabalho, MembroEquipe, NovoPonto, Ponto, TipoPonto } from "@/lib/types";
 import { TelaBase } from "@/components/fluxo-registro";
 
-const filaOffline = criarFilaOffline<NovoPonto>("app-coletivo:fila-pontos");
+// Começa com /patio/ e não tem //, \, : nem .. (nada de sair do app nem
+// de subir de pasta). Fora disso, null = comportamento de sempre.
+function caminhoVoltarSeguro(valor: string | null): string | null {
+  if (!valor || !valor.startsWith("/patio/")) return null;
+  if (valor.includes("//") || valor.includes("\\") || valor.includes(":") || valor.includes("..")) return null;
+  return valor;
+}
+
+// Lido na hora de usar (não no render): evita useSearchParams + Suspense
+// numa tela que hoje não precisa de nenhum dos dois.
+function lerVoltar(): string | null {
+  if (typeof window === "undefined") return null;
+  return caminhoVoltarSeguro(new URLSearchParams(window.location.search).get("voltar"));
+}
 
 type ResultadoPonto = { tipo: TipoPonto; offline: boolean } | null;
 
@@ -52,6 +72,7 @@ interface ResumoMembro {
 }
 
 export default function MeuPontoPage() {
+  const router = useRouter();
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [meuMembro, setMeuMembro] = useState<MembroEquipe | null>(null);
@@ -160,17 +181,28 @@ export default function MeuPontoPage() {
   // Salva o registro (online ou na fila offline) e atualiza os resumos —
   // compartilhado entre o caminho normal (dentro do raio) e a confirmação
   // de "bater fora do pátio" (ver confirmarForaDoRaio).
-  async function salvarEAtualizar(registro: NovoPonto, tipo: TipoPonto) {
-    if (!meuMembro) return;
+  // Devolve true quando já navegou pro ?voltar= (entrada salva).
+  async function salvarEAtualizar(registro: NovoPonto, tipo: TipoPonto): Promise<boolean> {
+    if (!meuMembro) return false;
+    const voltar = tipo === "entrada" ? lerVoltar() : null;
     try {
       await salvarPonto(registro);
       setResultadoPonto({ tipo, offline: false });
+      if (voltar) {
+        router.replace(voltar);
+        return true;
+      }
       await recarregarResumos(meuMembro, podeVerTodos);
     } catch {
       filaOffline.enfileirar(registro);
       setPendentesOffline(filaOffline.contar());
       setResultadoPonto({ tipo, offline: true });
+      if (voltar) {
+        router.replace(voltar);
+        return true;
+      }
     }
+    return false;
   }
 
   async function baterPonto(tipo: TipoPonto) {
@@ -234,7 +266,7 @@ export default function MeuPontoPage() {
       status_aprovacao: "pendente",
     };
 
-    await salvarEAtualizar(registro, tipo);
+    if (await salvarEAtualizar(registro, tipo)) return;
     await recarregarPendentes(podeVerTodos);
     setForaDoRaioPendente(null);
     setJustificativa("");

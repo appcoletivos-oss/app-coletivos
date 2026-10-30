@@ -5,6 +5,7 @@
 
 import { supabase } from "./supabase";
 import { requerSessao } from "./auth";
+import { criarFilaOffline } from "./fila-offline";
 import type { EventoAgenda, LocalTrabalho, NovoPonto, Ponto } from "./types";
 
 // -----------------------------------------------------------------------------
@@ -104,6 +105,11 @@ export function obterLocalizacaoAtual(): Promise<CoordenadaAtual> {
 // -----------------------------------------------------------------------------
 // Registro de ponto
 // -----------------------------------------------------------------------------
+
+// Ponto batido sem internet. Mora aqui (e não só em meu-ponto/page.tsx)
+// porque /patio/hoje também lê a fila: entrada guardada no celular conta
+// como entrada batida (Sprint B, item B1).
+export const filaPontosOffline = criarFilaOffline<NovoPonto>("app-coletivo:fila-pontos");
 
 export async function salvarPonto(registro: NovoPonto): Promise<void> {
   await requerSessao();

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FotosDoacaoPendentes } from "@/components/fotos-doacao-pendentes";
 
 // Hub do bloco Venda (Etapa 1, item 5 — handoff "Registro simplificado").
 // Parado desde a sessão G (ver registro_geral_app_coletivos.md, seção 0);
@@ -37,6 +38,11 @@ export default function VendaPage() {
             {!item.pronto && <span className="mt-1 block text-[10px] font-normal">em breve</span>}
           </Link>
         ))}
+      </div>
+
+      {/* Doações aprovadas pelo Relato do turno, ainda sem foto (B2c). */}
+      <div className="mt-5">
+        <FotosDoacaoPendentes />
       </div>
     </main>
   );

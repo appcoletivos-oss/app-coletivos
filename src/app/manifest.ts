@@ -9,7 +9,11 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Coletivo",
     description:
       "Organização e gestão de coletivos comunitários e suas frentes de atuação.",
-    start_url: "/",
+    // Sprint B (B1): o app instalado abre direto no dia (ponto, depois
+    // checklist). /patio/hoje manda consultor pra /patio. No iPhone o
+    // start_url fica gravado na instalação: quem já instalou precisa
+    // reinstalar pra pegar este valor (o card de / também leva pra lá).
+    start_url: "/patio/hoje",
     display: "standalone",
     background_color: "#f4f7f2",
     theme_color: "#2e6b3e",
